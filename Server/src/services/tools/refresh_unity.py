@@ -20,7 +20,16 @@ logger = logging.getLogger(__name__)
 
 
 @mcp_for_unity_tool(
-    description="Request a Unity asset database refresh and optionally a script compilation. Can optionally wait for readiness.",
+    description="""Refresh Unity asset database and optionally compile scripts. BLOCKING by default - waits for completion.
+
+NOTE: For entering play mode after code changes, prefer manage_editor(action='play', recompile=true) instead.
+That single call handles compile + error check + play. Use refresh_unity only when you need to refresh without playing.
+
+Options:
+- mode: 'if_dirty' (default) or 'force'
+- scope: 'assets', 'scripts', or 'all' (default)
+- compile: 'none' (default) or 'request' to trigger script compilation
+- wait_for_ready: true (default) blocks until Unity is ready; false returns immediately after triggering""",
     annotations=ToolAnnotations(
         title="Refresh Unity",
         destructiveHint=True,

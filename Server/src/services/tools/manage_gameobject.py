@@ -40,7 +40,9 @@ def _normalize_component_properties(value: Any) -> tuple[dict[str, dict[str, Any
 
 
 @mcp_for_unity_tool(
-    description="Performs CRUD operations on GameObjects. Actions: create, modify, delete, duplicate, move_relative. For finding GameObjects use find_gameobjects tool. For component operations use manage_components tool.",
+    description="""CRUD operations on GameObjects: create, modify, delete, duplicate, move_relative.
+
+For finding GameObjects use find_gameobjects. For components use manage_components.""",
     annotations=ToolAnnotations(
         title="Manage GameObject",
         destructiveHint=True,

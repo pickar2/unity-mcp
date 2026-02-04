@@ -313,7 +313,8 @@ def _err(code: str, message: str, *, expected: dict[str, Any] | None = None, rew
 @mcp_for_unity_tool(
     name="script_apply_edits",
     description=(
-        """Structured C# edits (methods/classes) with safer boundaries - prefer this over raw text.
+        """Structured C# edits (methods/classes) with safer boundaries than raw text edits.
+
     Best practices:
     - Prefer anchor_* ops for pattern-based insert/replace near stable markers
     - Use replace_method/delete_method for whole-method changes (keeps signatures balanced)

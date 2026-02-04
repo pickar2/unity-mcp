@@ -15,7 +15,9 @@ from services.tools.preflight import preflight
 
 
 @mcp_for_unity_tool(
-    description="Search for GameObjects in the scene. Requires search_term (name, tag, layer name, component type, or path). Returns instance IDs only (paginated). Use mcpforunity://scene/gameobject/{id} resource to get full GameObject data."
+    description="""Search for GameObjects in the scene by name, tag, layer, component type, or path.
+
+Returns instance IDs only (paginated). Use mcpforunity://scene/gameobject/{id} resource for full data."""
 )
 async def find_gameobjects(
     ctx: Context,

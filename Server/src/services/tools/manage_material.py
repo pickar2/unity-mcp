@@ -15,7 +15,10 @@ from transport.legacy.unity_connection import async_send_command_with_retry
 
 
 @mcp_for_unity_tool(
-    description="Manages Unity materials (set properties, colors, shaders, etc). Read-only actions: ping, get_material_info. Modifying actions: create, set_material_shader_property, set_material_color, assign_material_to_renderer, set_renderer_color.",
+    description="""Manage Unity materials: create, set properties, assign to renderers.
+
+Read-only: ping, get_material_info.
+Modifying: create, set_material_shader_property, set_material_color, assign_material_to_renderer, set_renderer_color.""",
     annotations=ToolAnnotations(
         title="Manage Material",
         destructiveHint=True,

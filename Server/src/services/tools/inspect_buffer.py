@@ -14,9 +14,9 @@ from transport.legacy.unity_connection import async_send_command_with_retry
 
 
 @mcp_for_unity_tool(
-    description="""Inspects ComputeBuffer/GraphicsBuffer contents. BLOCKING - returns results immediately.
+    description="""Inspect ComputeBuffer/GraphicsBuffer contents via reflection-based discovery.
 
-Uses reflection-based discovery. Target syntax:
+Target syntax:
 - "GameObject/Component.fieldName" - find buffer by GameObject name
 - "instanceId:12345/Component.fieldName" - find by instance ID (unambiguous)
 - "*/Component.*" - discovery mode: list all matching buffers

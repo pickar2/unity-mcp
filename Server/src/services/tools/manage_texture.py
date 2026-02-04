@@ -366,9 +366,9 @@ def _normalize_import_settings(value: Any) -> tuple[dict | None, str | None]:
 
 @mcp_for_unity_tool(
     description=(
-        "Procedural texture generation for Unity. Creates textures with solid fills, "
-        "patterns (checkerboard, stripes, dots, grid, brick), gradients, and noise. "
-        "Actions: create, modify, delete, create_sprite, apply_pattern, apply_gradient, apply_noise"
+        "Procedural texture generation: solid fills, patterns, gradients, noise.\n\n"
+        "Patterns: checkerboard, stripes, dots, grid, brick.\n"
+        "Actions: create, modify, delete, create_sprite, apply_pattern, apply_gradient, apply_noise."
     ),
     annotations=ToolAnnotations(
         title="Manage Texture",
