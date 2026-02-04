@@ -90,16 +90,25 @@ namespace MCPForUnity.Editor.Helpers
             string filterRegex = null,
             int? count = null)
         {
-            var result = QueryPaged(
+            // First get all matching entries to determine total
+            var allResult = QueryPaged(
                 types: types,
                 sinceSequenceId: sinceSequenceId,
                 sinceTimestamp: sinceTimestamp,
                 filterText: filterText,
                 filterRegex: filterRegex,
-                pageSize: count ?? int.MaxValue,
+                pageSize: int.MaxValue,
                 cursor: 0
             );
-            return result.Entries;
+
+            if (!count.HasValue || count.Value >= allResult.TotalMatches)
+            {
+                return allResult.Entries;
+            }
+
+            // Return only the last N (most recent) entries
+            int startIdx = allResult.TotalMatches - count.Value;
+            return allResult.Entries.GetRange(startIdx, count.Value);
         }
 
         public PagedResult QueryPaged(
