@@ -397,10 +397,13 @@ namespace MCPForUnity.Editor.Tools
 #endif
 
                 // Best-effort: ensure Game View exists and repaints before capture.
-                if (!Application.isBatchMode)
+                // Only needed for ScreenCapture API - camera fallback renders directly to RenderTexture.
+#if UNITY_2022_1_OR_NEWER
+                if (!Application.isBatchMode && screenCaptureAvailable)
                 {
                     EnsureGameView();
                 }
+#endif
 
                 ScreenshotCaptureResult result = ScreenshotUtility.CaptureToAssetsFolder(fileName, resolvedSuperSize, ensureUniqueFileName: true);
 
@@ -438,26 +441,16 @@ namespace MCPForUnity.Editor.Tools
         {
             try
             {
-                // Ensure a Game View exists and has a chance to repaint before capture.
-                try
-                {
-                    if (!EditorApplication.ExecuteMenuItem("Window/General/Game"))
-                    {
-                        // Some Unity versions expose hotkey suffixes in menu paths.
-                        EditorApplication.ExecuteMenuItem("Window/General/Game %2");
-                    }
-                }
-                catch (Exception e)
-                {
-                    try { McpLog.Debug($"[ManageScene] screenshot: failed to open Game View via menu item: {e.Message}"); } catch { }
-                }
-
+                // Repaint Game View if it exists, but DON'T steal focus.
+                // Stealing focus causes Unity to detect external code changes and recompile,
+                // which disrupts the user's workflow when developing with AI assistants.
                 try
                 {
                     var gameViewType = Type.GetType("UnityEditor.GameView,UnityEditor");
                     if (gameViewType != null)
                     {
-                        var window = EditorWindow.GetWindow(gameViewType);
+                        // Use GetWindow with utility:false, focus:false to avoid stealing focus
+                        var window = EditorWindow.GetWindow(gameViewType, false, null, false);
                         window?.Repaint();
                     }
                 }
