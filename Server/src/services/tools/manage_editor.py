@@ -19,7 +19,7 @@ RECOMMENDED WORKFLOW for entering play mode after code changes:
   Do NOT manually call refresh_unity -> read_console -> play separately - that's 3 calls instead of 1.
 
 Actions:
-- play: Enter play mode. Use recompile=true after code changes to compile first and fail if errors.
+- play: Enter play mode. Use recompile=true after code changes to compile first and fail if errors. Use paused=true to start paused (for debugging).
 - pause: Toggle pause state while in play mode.
 - stop: Exit play mode.
 - step: Advance simulation by N frames (requires play mode). Use 'frames' parameter.
@@ -48,12 +48,15 @@ async def manage_editor(
                          "If true, trigger script recompilation before the action. Returns error if compilation fails (accepts true/false or 'true'/'false')"] | None = None,
     frames: Annotated[int | str,
                       "Number of frames to step (for 'step' action). Defaults to 1. Large values block until complete."] | None = None,
+    paused: Annotated[bool | str,
+                      "If true with action='play', enter play mode immediately paused (for debugging). Accepts true/false or 'true'/'false'."] | None = None,
 ) -> dict[str, Any]:
     # Get active instance from request state (injected by middleware)
     unity_instance = get_unity_instance_from_context(ctx)
 
     wait_for_completion = coerce_bool(wait_for_completion)
     recompile = coerce_bool(recompile)
+    paused = coerce_bool(paused)
 
     try:
         # Diagnostics: quick telemetry checks
@@ -72,6 +75,7 @@ async def manage_editor(
             "layerName": layer_name,
             "recompile": recompile,
             "frames": coerce_int(frames) if frames is not None else None,
+            "paused": paused,
         }
         params = {k: v for k, v in params.items() if v is not None}
 

@@ -47,6 +47,7 @@ namespace MCPForUnity.Editor.Tools
             string layerName = p.Get("layerName");
             bool waitForCompletion = p.GetBool("waitForCompletion", false);
             bool recompile = p.GetBool("recompile", false);
+            bool paused = p.GetBool("paused", false);
 
             // Route action
             switch (action)
@@ -64,9 +65,14 @@ namespace MCPForUnity.Editor.Tools
                         if (!EditorApplication.isPlaying)
                         {
                             EditorApplication.isPlaying = true;
-                            return new SuccessResponse("Entered play mode.", new
+                            if (paused)
+                            {
+                                EditorApplication.isPaused = true;
+                            }
+                            return new SuccessResponse(paused ? "Entered play mode (paused)." : "Entered play mode.", new
                             {
                                 recompiled = recompile,
+                                paused = paused,
                             });
                         }
                         return new SuccessResponse("Already in play mode.");
