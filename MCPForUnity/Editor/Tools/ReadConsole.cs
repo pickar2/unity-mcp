@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
+using System.Text.RegularExpressions;
 using MCPForUnity.Editor.Helpers; // For Response class
 using Newtonsoft.Json.Linq;
 using UnityEditor;
@@ -176,9 +177,31 @@ namespace MCPForUnity.Editor.Tools
                     int? pageSize = p.GetInt("pageSize");
                     int? cursor = p.GetInt("cursor");
                     string filterText = p.Get("filterText");
+                    string filterRegexStr = p.Get("filterRegex");
                     string sinceTimestampStr = p.Get("sinceTimestamp"); // TODO: Implement timestamp filtering
                     string format = p.Get("format", "plain").ToLower();
                     bool includeStacktrace = p.GetBool("includeStacktrace", false);
+                    bool countOnly = p.GetBool("countOnly", false);
+
+                    // Validate mutual exclusivity of filterText and filterRegex
+                    if (!string.IsNullOrEmpty(filterText) && !string.IsNullOrEmpty(filterRegexStr))
+                    {
+                        return new ErrorResponse("Cannot use both filterText and filterRegex - choose one.");
+                    }
+
+                    // Compile regex if provided
+                    Regex filterRegex = null;
+                    if (!string.IsNullOrEmpty(filterRegexStr))
+                    {
+                        try
+                        {
+                            filterRegex = new Regex(filterRegexStr, RegexOptions.IgnoreCase);
+                        }
+                        catch (ArgumentException e)
+                        {
+                            return new ErrorResponse($"Invalid regex pattern: {e.Message}");
+                        }
+                    }
 
                     if (types.Contains("all"))
                     {
@@ -193,12 +216,18 @@ namespace MCPForUnity.Editor.Tools
                         // Need a way to get timestamp per log entry.
                     }
 
+                    if (countOnly)
+                    {
+                        return GetConsoleCounts(filterText, filterRegex);
+                    }
+
                     return GetConsoleEntries(
                         types,
                         count,
                         pageSize,
                         cursor,
                         filterText,
+                        filterRegex,
                         format,
                         includeStacktrace
                     );
@@ -241,6 +270,7 @@ namespace MCPForUnity.Editor.Tools
         /// <param name="pageSize">Number of entries per page. Defaults to 50 when omitted.</param>
         /// <param name="cursor">Starting index for paging (0-based). Defaults to 0.</param>
         /// <param name="filterText">Optional text filter (case-insensitive substring match).</param>
+        /// <param name="filterRegex">Optional compiled regex filter (mutually exclusive with filterText).</param>
         /// <param name="format">Output format: "plain", "detailed", or "json".</param>
         /// <param name="includeStacktrace">Whether to include stack traces in the output.</param>
         /// <returns>A success response with entries, or an error response.</returns>
@@ -250,6 +280,7 @@ namespace MCPForUnity.Editor.Tools
             int? pageSize,
             int? cursor,
             string filterText,
+            Regex filterRegex,
             string format,
             bool includeStacktrace
         )
@@ -258,10 +289,17 @@ namespace MCPForUnity.Editor.Tools
             int retrievedCount = 0;
             int totalMatches = 0;
             bool usePaging = pageSize.HasValue || cursor.HasValue;
-            // pageSize defaults to 50 when omitted; count is the overall non-paging limit only
-            int resolvedPageSize = Mathf.Clamp(pageSize ?? 50, 1, 500);
+            // pageSize defaults to 200 when omitted; count is the overall non-paging limit only
+            int resolvedPageSize = Mathf.Clamp(pageSize ?? 200, 1, 5000);
             int resolvedCursor = Mathf.Max(0, cursor ?? 0);
             int pageEndExclusive = resolvedCursor + resolvedPageSize;
+
+            // When not paging and filters reduce the result set, cap at 2000 to avoid huge payloads
+            bool hasFilters = types.Count < 3 || !string.IsNullOrEmpty(filterText) || filterRegex != null;
+            if (!usePaging && !count.HasValue && hasFilters)
+            {
+                count = 2000;
+            }
 
             try
             {
@@ -325,8 +363,15 @@ namespace MCPForUnity.Editor.Tools
 
                     if (!want) continue;
 
-                    // Filter by text (case-insensitive)
-                    if (
+                    // Filter by text (case-insensitive substring) or regex
+                    if (filterRegex != null)
+                    {
+                        if (!filterRegex.IsMatch(message))
+                        {
+                            continue;
+                        }
+                    }
+                    else if (
                         !string.IsNullOrEmpty(filterText)
                         && message.IndexOf(filterText, StringComparison.OrdinalIgnoreCase) < 0
                     )
@@ -447,6 +492,85 @@ namespace MCPForUnity.Editor.Tools
                 formattedEntries
             );
         }
+
+		private static object GetConsoleCounts(string filterText, Regex filterRegex = null)
+		{
+			var errorCount = 0;
+			var warningCount = 0;
+			var logCount = 0;
+
+			try
+			{
+				_startGettingEntriesMethod.Invoke(null, null);
+
+				var totalEntries = (int)_getCountMethod.Invoke(null, null);
+				var logEntryType = typeof(EditorApplication).Assembly.GetType("UnityEditor.LogEntry");
+				if (logEntryType == null)
+					throw new Exception("Could not find internal type UnityEditor.LogEntry during GetConsoleCounts.");
+				var logEntryInstance = Activator.CreateInstance(logEntryType);
+
+				for (var i = 0; i < totalEntries; i++)
+				{
+					_getEntryMethod.Invoke(null, new object[] { i, logEntryInstance });
+
+					var mode = (int)_modeField.GetValue(logEntryInstance);
+					var message = (string)_messageField.GetValue(logEntryInstance);
+
+					if (string.IsNullOrEmpty(message)) continue;
+
+					// Filter by text (case-insensitive substring) or regex
+					if (filterRegex != null)
+					{
+						if (!filterRegex.IsMatch(message)) continue;
+					}
+					else if (!string.IsNullOrEmpty(filterText)
+						&& message.IndexOf(filterText, StringComparison.OrdinalIgnoreCase) < 0)
+					{
+						continue;
+					}
+
+					var unityType = InferTypeFromMessage(message);
+					var isExplicitDebug = IsExplicitDebugLog(message);
+					if (!isExplicitDebug && unityType == LogType.Log)
+					{
+						unityType = GetLogTypeFromMode(mode);
+					}
+
+					switch (unityType)
+					{
+						case LogType.Error:
+						case LogType.Exception:
+						case LogType.Assert:
+							errorCount++;
+							break;
+						case LogType.Warning:
+							warningCount++;
+							break;
+						default:
+							logCount++;
+							break;
+					}
+				}
+			}
+			catch (Exception e)
+			{
+				McpLog.Error($"[ReadConsole] Error while counting log entries: {e}");
+				return new ErrorResponse($"Error counting log entries: {e.Message}");
+			}
+			finally
+			{
+				try { _endGettingEntriesMethod.Invoke(null, null); }
+				catch (Exception e) { McpLog.Error($"[ReadConsole] Failed to call EndGettingEntries: {e}"); }
+			}
+
+			return new SuccessResponse("Console entry counts.", new
+			{
+				error = errorCount,
+				warning = warningCount,
+				log = logCount,
+				total = errorCount + warningCount + logCount,
+			});
+		}
 
         // --- Internal Helpers ---
 

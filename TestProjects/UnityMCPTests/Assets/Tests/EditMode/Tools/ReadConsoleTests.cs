@@ -75,5 +75,87 @@ namespace MCPForUnityTests.Editor.Tools
             }
             Assert.IsTrue(found, $"The unique log message '{uniqueMessage}' was not found in retrieved logs.");
         }
+
+        [Test]
+        public void HandleCommand_Get_WithRegexFilter_MatchesPattern()
+        {
+            // Arrange
+            string uniqueId = Guid.NewGuid().ToString().Substring(0, 8);
+            Debug.Log($"DIAGNOSTIC-{uniqueId}: particle 1842 contact");
+            Debug.Log($"UNRELATED-{uniqueId}: some other message");
+            Debug.Log($"CONTACTS-{uniqueId}: particle 1842 data");
+
+            var paramsObj = new JObject
+            {
+                ["action"] = "get",
+                ["types"] = new JArray { "log" },
+                ["filterRegex"] = $"DIAGNOSTIC|CONTACTS.*particle 1842",
+                ["format"] = "detailed",
+                ["count"] = 1000
+            };
+
+            // Act
+            var result = ToJObject(ReadConsole.HandleCommand(paramsObj));
+
+            // Assert
+            Assert.IsTrue(result.Value<bool>("success"), result.ToString());
+            var data = result["data"] as JArray;
+            Assert.IsNotNull(data);
+
+            // Should find DIAGNOSTIC and CONTACTS messages, not UNRELATED
+            int matchCount = 0;
+            bool foundUnrelated = false;
+            foreach (var entry in data)
+            {
+                var msg = entry["message"]?.ToString() ?? "";
+                if (msg.Contains(uniqueId))
+                {
+                    if (msg.Contains("DIAGNOSTIC") || msg.Contains("CONTACTS"))
+                        matchCount++;
+                    if (msg.Contains("UNRELATED"))
+                        foundUnrelated = true;
+                }
+            }
+
+            Assert.AreEqual(2, matchCount, "Should match both DIAGNOSTIC and CONTACTS messages");
+            Assert.IsFalse(foundUnrelated, "Should not match UNRELATED message");
+        }
+
+        [Test]
+        public void HandleCommand_Get_WithBothFilters_ReturnsError()
+        {
+            // Arrange
+            var paramsObj = new JObject
+            {
+                ["action"] = "get",
+                ["filterText"] = "some text",
+                ["filterRegex"] = "some.*pattern"
+            };
+
+            // Act
+            var result = ToJObject(ReadConsole.HandleCommand(paramsObj));
+
+            // Assert
+            Assert.IsFalse(result.Value<bool>("success"), "Should fail with both filters");
+            Assert.That(result["error"]?.ToString(), Does.Contain("filterText").And.Contain("filterRegex"));
+        }
+
+        [Test]
+        public void HandleCommand_Get_WithInvalidRegex_ReturnsError()
+        {
+            // Arrange
+            var paramsObj = new JObject
+            {
+                ["action"] = "get",
+                ["filterRegex"] = "[invalid(regex"
+            };
+
+            // Act
+            var result = ToJObject(ReadConsole.HandleCommand(paramsObj));
+
+            // Assert
+            Assert.IsFalse(result.Value<bool>("success"), "Should fail with invalid regex");
+            Assert.That(result["error"]?.ToString().ToLower(), Does.Contain("regex").Or.Contain("pattern"));
+        }
     }
 }

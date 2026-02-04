@@ -141,7 +141,16 @@ class GetTestJobResponse(MCPResponse):
 
 
 @mcp_for_unity_tool(
-    description="Starts a Unity test run asynchronously and returns a job_id immediately. Poll with get_test_job for progress.",
+    description="""Start Unity tests. Returns job_id immediately (non-blocking). Use get_test_job with wait_timeout to wait for results.
+
+RECOMMENDED: After calling run_tests, call get_test_job with wait_timeout=60 to wait for completion in one call.
+This avoids polling loops and is more efficient.
+
+Options:
+- mode: 'EditMode' (default) or 'PlayMode'
+- test_names/group_names/category_names/assembly_names: Filter which tests to run
+- recompile: Set true to compile scripts first (fails if compilation errors)
+- include_details/include_failed_tests: Control result verbosity""",
     annotations=ToolAnnotations(
         title="Run Tests",
         destructiveHint=True,
@@ -163,6 +172,8 @@ async def run_tests(
                                     "Include details for failed/skipped tests only (default: false)"] = False,
     include_details: Annotated[bool,
                                "Include details for all tests (default: false)"] = False,
+    recompile: Annotated[bool,
+                         "If true, trigger script recompilation before running tests. Returns error if compilation fails."] = False,
 ) -> RunTestsStartResponse | MCPResponse:
     unity_instance = get_unity_instance_from_context(ctx)
 
@@ -181,6 +192,8 @@ async def run_tests(
         return None
 
     params: dict[str, Any] = {"mode": mode}
+    if recompile:
+        params["recompile"] = True
     if (t := _coerce_string_list(test_names)):
         params["testNames"] = t
     if (g := _coerce_string_list(group_names)):
@@ -209,7 +222,12 @@ async def run_tests(
 
 
 @mcp_for_unity_tool(
-    description="Polls an async Unity test job by job_id.",
+    description="""Get status/results of a Unity test job. Use wait_timeout for BLOCKING behavior (recommended).
+
+RECOMMENDED: Set wait_timeout=60 to wait up to 60 seconds for tests to complete. Returns immediately when done.
+Without wait_timeout, returns current status immediately (non-blocking).
+
+The tool handles all polling internally - no need for client-side loops or sleep calls.""",
     annotations=ToolAnnotations(
         title="Get Test Job",
         readOnlyHint=True,

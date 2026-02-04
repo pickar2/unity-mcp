@@ -21,7 +21,18 @@ def _strip_stacktrace_from_list(items: list) -> None:
 
 
 @mcp_for_unity_tool(
-    description="Gets messages from or clears the Unity Editor console. Defaults to 10 most recent entries. Use page_size/cursor for paging. Note: For maximum client compatibility, pass count as a quoted string (e.g., '5'). The 'get' action is read-only; 'clear' modifies ephemeral UI state (not project data).",
+    description="""Read or clear Unity console messages. BLOCKING - returns immediately with results.
+
+NOTE: To check for compilation errors before playing, use manage_editor(action='play', recompile=true) instead.
+That handles compile + error check + play in one call. Only use read_console for debugging/diagnostics.
+
+Options:
+- action: 'get' (default) or 'clear'
+- types: ['error', 'warning', 'log', 'all'] - message types to include
+- count: Max messages (default 10). Use page_size/cursor for pagination.
+- filter_text: Substring filter (case-insensitive)
+- filter_regex: Regex filter (case-insensitive). Mutually exclusive with filter_text.
+- include_stacktrace: Include stack traces in output""",
     annotations=ToolAnnotations(
         title="Read Console",
     ),
@@ -35,7 +46,8 @@ async def read_console(
                      "Message types to get (accepts list or JSON string)"] | None = None,
     count: Annotated[int | str,
                      "Max messages to return in non-paging mode (accepts int or string, e.g., 5 or '5'). Ignored when paging with page_size/cursor."] | None = None,
-    filter_text: Annotated[str, "Text filter for messages"] | None = None,
+    filter_text: Annotated[str, "Text filter for messages (case-insensitive substring match). Mutually exclusive with filter_regex."] | None = None,
+    filter_regex: Annotated[str, "Regex pattern filter for messages (case-insensitive). Mutually exclusive with filter_text. Example: 'DIAGNOSTIC|CONTACTS.*particle 1842'"] | None = None,
     since_timestamp: Annotated[str,
                                "Get messages after this timestamp (ISO 8601)"] | None = None,
     page_size: Annotated[int | str,
@@ -99,6 +111,13 @@ async def read_console(
     if isinstance(action, str):
         action = action.lower()
 
+    # Validate mutual exclusivity of filter params
+    if filter_text and filter_regex:
+        return {
+            "success": False,
+            "message": "Cannot use both filter_text and filter_regex - choose one."
+        }
+
     # Coerce count defensively (string/float -> int).
     # Important: leaving count unset previously meant "return all console entries", which can be extremely slow
     # (and can exceed the plugin command timeout when Unity has a large console).
@@ -118,6 +137,7 @@ async def read_console(
         "types": types,
         "count": count,
         "filterText": filter_text,
+        "filterRegex": filter_regex,
         "sinceTimestamp": since_timestamp,
         "pageSize": coerced_page_size,
         "cursor": coerced_cursor,

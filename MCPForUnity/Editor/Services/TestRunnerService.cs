@@ -24,6 +24,7 @@ namespace MCPForUnity.Editor.Services
         private readonly SemaphoreSlim _operationLock = new SemaphoreSlim(1, 1);
         private readonly List<ITestResultAdaptor> _leafResults = new List<ITestResultAdaptor>();
         private TaskCompletionSource<TestRunResult> _runCompletionSource;
+        private bool _hadFilter;
 
         public TestRunnerService()
         {
@@ -92,6 +93,7 @@ namespace MCPForUnity.Editor.Services
                 }
 
                 _leafResults.Clear();
+                _hadFilter = filterOptions != null;
                 _runCompletionSource = new TaskCompletionSource<TestRunResult>(TaskCreationOptions.RunContinuationsAsynchronously);
                 // Mark running immediately so readiness snapshots reflect the busy state even before callbacks fire.
                 TestRunStatus.MarkStarted(mode);
@@ -197,7 +199,9 @@ namespace MCPForUnity.Editor.Services
             // This handles domain reload scenarios (e.g., PlayMode tests) where the TestRunnerService
             // is recreated and _runCompletionSource is lost, but TestJobManager state persists via
             // SessionState and the Test Runner still delivers the RunFinished callback.
-            var payload = TestRunResult.Create(result, _leafResults);
+            var payload = _hadFilter && _leafResults.Count == 0
+                ? TestRunResult.CreateNoMatch()
+                : TestRunResult.Create(result, _leafResults);
 
             // Clean up state regardless of _runCompletionSource - these methods safely handle
             // the case where no MCP job exists (e.g., manual test runs via Unity UI).
@@ -494,6 +498,13 @@ namespace MCPForUnity.Editor.Services
                 summary = Summary.ToSerializable(),
                 results = resultsToSerialize?.ToList(),
             };
+        }
+
+        internal static TestRunResult CreateNoMatch()
+        {
+            var summary = new TestRunSummary(0, 0, 0, 0, 0.0,
+                "NoMatch: filter matched 0 tests. Use exact full names (Namespace.Class.Method) for test_names, or regex patterns for group_names.");
+            return new TestRunResult(summary, Array.Empty<TestRunTestResult>());
         }
 
         internal static TestRunResult Create(ITestResultAdaptor summary, IReadOnlyList<ITestResultAdaptor> tests)

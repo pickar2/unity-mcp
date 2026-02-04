@@ -1,4 +1,5 @@
 using System;
+using System.Threading.Tasks;
 using MCPForUnity.Editor.Helpers;
 using Newtonsoft.Json.Linq;
 using UnityEditor;
@@ -22,7 +23,7 @@ namespace MCPForUnity.Editor.Tools
         /// <summary>
         /// Main handler for editor management actions.
         /// </summary>
-        public static object HandleCommand(JObject @params)
+        public static async Task<object> HandleCommand(JObject @params)
         {
             // Step 1: Null parameter guard (consistent across all tools)
             if (@params == null)
@@ -45,6 +46,7 @@ namespace MCPForUnity.Editor.Tools
             string tagName = p.Get("tagName");
             string layerName = p.Get("layerName");
             bool waitForCompletion = p.GetBool("waitForCompletion", false);
+            bool recompile = p.GetBool("recompile", false);
 
             // Route action
             switch (action)
@@ -53,10 +55,19 @@ namespace MCPForUnity.Editor.Tools
                 case "play":
                     try
                     {
+                        if (recompile)
+                        {
+                            var compileError = await RecompileHelper.RecompileAndWaitAsync().ConfigureAwait(true);
+                            if (compileError != null) return compileError;
+                        }
+
                         if (!EditorApplication.isPlaying)
                         {
                             EditorApplication.isPlaying = true;
-                            return new SuccessResponse("Entered play mode.");
+                            return new SuccessResponse("Entered play mode.", new
+                            {
+                                recompiled = recompile,
+                            });
                         }
                         return new SuccessResponse("Already in play mode.");
                     }
@@ -93,6 +104,33 @@ namespace MCPForUnity.Editor.Tools
                     catch (Exception e)
                     {
                         return new ErrorResponse($"Error stopping play mode: {e.Message}");
+                    }
+
+                // Frame Stepping
+                case "step":
+                    try
+                    {
+                        if (!EditorApplication.isPlaying)
+                        {
+                            return new ErrorResponse("Cannot step: Not in play mode. Enter play mode first.");
+                        }
+
+                        int frames = p.GetInt("frames") ?? 1;
+                        if (frames < 1)
+                        {
+                            return new ErrorResponse("frames must be at least 1.");
+                        }
+
+                        for (int i = 0; i < frames; i++)
+                        {
+                            EditorApplication.Step();
+                        }
+
+                        return new SuccessResponse($"Stepped {frames} frame(s).", new { frames });
+                    }
+                    catch (Exception e)
+                    {
+                        return new ErrorResponse($"Error stepping frames: {e.Message}");
                     }
 
                 // Tool Control
@@ -136,7 +174,7 @@ namespace MCPForUnity.Editor.Tools
 
                 default:
                     return new ErrorResponse(
-                        $"Unknown action: '{action}'. Supported actions: play, pause, stop, set_active_tool, add_tag, remove_tag, add_layer, remove_layer. Use MCP resources for reading editor state, project info, tags, layers, selection, windows, prefab stage, and active tool."
+                        $"Unknown action: '{action}'. Supported actions: play, pause, stop, step, set_active_tool, add_tag, remove_tag, add_layer, remove_layer. Use MCP resources for reading editor state, project info, tags, layers, selection, windows, prefab stage, and active tool."
                     );
             }
         }
