@@ -1,5 +1,8 @@
 """
 Defines the read_console tool for accessing Unity Editor console messages.
+
+The C# side uses LogCaptureService which captures logs via Application.logMessageReceived.
+Each entry has a sequenceId and timestamp, enabling efficient polling via since_sequence_id.
 """
 from typing import Annotated, Any, Literal
 
@@ -13,13 +16,6 @@ from transport.unity_transport import send_with_unity_instance
 from transport.legacy.unity_connection import async_send_command_with_retry
 
 
-def _strip_stacktrace_from_list(items: list) -> None:
-    """Remove stacktrace fields from a list of log entries."""
-    for item in items:
-        if isinstance(item, dict) and "stacktrace" in item:
-            item.pop("stacktrace", None)
-
-
 @mcp_for_unity_tool(
     description="""Read or clear Unity console messages. BLOCKING - returns immediately with results.
 
@@ -29,10 +25,17 @@ That handles compile + error check + play in one call. Only use read_console for
 Options:
 - action: 'get' (default) or 'clear'
 - types: ['error', 'warning', 'log', 'all'] - message types to include
-- count: Max messages (default 10). Use page_size/cursor for pagination.
-- filter_text: Substring filter (case-insensitive)
+- count: Max messages (default 100). Use page_size/cursor for pagination.
+- since_sequence_id: Only return entries after this sequence ID (for efficient polling)
+- since_timestamp: Only return entries after this ISO 8601 timestamp
+- filter_text: Substring filter (case-insensitive). Mutually exclusive with filter_regex.
 - filter_regex: Regex filter (case-insensitive). Mutually exclusive with filter_text.
-- include_stacktrace: Include stack traces in output""",
+- page_size/cursor: Pagination support for large result sets
+- count_only: Return only counts by type (no entries)
+- include_stacktrace: Include stack traces in output
+
+Entries include sequenceId and timestamp fields. Use since_sequence_id to poll for
+new entries since your last read - pass the latestSequenceId from a previous response.""",
     annotations=ToolAnnotations(
         title="Read Console",
     ),
@@ -46,25 +49,26 @@ async def read_console(
                      "Message types to get (accepts list or JSON string)"] | None = None,
     count: Annotated[int | str,
                      "Max messages to return in non-paging mode (accepts int or string, e.g., 5 or '5'). Ignored when paging with page_size/cursor."] | None = None,
-    filter_text: Annotated[str, "Text filter for messages (case-insensitive substring match). Mutually exclusive with filter_regex."] | None = None,
-    filter_regex: Annotated[str, "Regex pattern filter for messages (case-insensitive). Mutually exclusive with filter_text. Example: 'DIAGNOSTIC|CONTACTS.*particle 1842'"] | None = None,
+    since_sequence_id: Annotated[int | str,
+                                 "Only return entries with sequenceId greater than this value. Use latestSequenceId from a previous response for efficient polling."] | None = None,
     since_timestamp: Annotated[str,
                                "Get messages after this timestamp (ISO 8601)"] | None = None,
+    filter_text: Annotated[str, "Text filter for messages (case-insensitive substring match). Mutually exclusive with filter_regex."] | None = None,
+    filter_regex: Annotated[str, "Regex pattern filter for messages (case-insensitive). Mutually exclusive with filter_text. Example: 'DIAGNOSTIC|CONTACTS.*particle 1842'"] | None = None,
     page_size: Annotated[int | str,
                          "Page size for paginated console reads. Defaults to 50 when omitted."] | None = None,
     cursor: Annotated[int | str,
                       "Opaque cursor for paging (0-based offset). Defaults to 0."] | None = None,
-    format: Annotated[Literal['plain', 'detailed',
-                              'json'], "Output format"] | None = None,
+    count_only: Annotated[bool | str,
+                          "If true, return only entry counts by type instead of full entries."] | None = None,
     include_stacktrace: Annotated[bool | str,
                                   "Include stack traces in output (accepts true/false or 'true'/'false')"] | None = None,
 ) -> dict[str, Any]:
-    # Get active instance from session state
-    # Removed session_state import
     unity_instance = get_unity_instance_from_context(ctx)
-    # Set defaults if values are None
+
+    # Set defaults
     action = action if action is not None else 'get'
-    
+
     # Parse types if it's a JSON string (handles client compatibility issue #561)
     if isinstance(types, str):
         types = parse_json_payload(types)
@@ -99,13 +103,14 @@ async def read_console(
         types = normalized_types
     else:
         types = ['error', 'warning', 'log']
-    
-    format = format if format is not None else 'plain'
-    # Coerce booleans defensively (strings like 'true'/'false')
 
+    # Coerce booleans defensively (strings like 'true'/'false')
     include_stacktrace = coerce_bool(include_stacktrace, default=False)
+    count_only = coerce_bool(count_only, default=False)
+
     coerced_page_size = coerce_int(page_size, default=None)
     coerced_cursor = coerce_int(cursor, default=None)
+    coerced_since_seq = coerce_int(since_sequence_id, default=None)
 
     # Normalize action if it's a string
     if isinstance(action, str):
@@ -119,53 +124,31 @@ async def read_console(
         }
 
     # Coerce count defensively (string/float -> int).
-    # Important: leaving count unset previously meant "return all console entries", which can be extremely slow
-    # (and can exceed the plugin command timeout when Unity has a large console).
-    # To keep the tool responsive by default, we cap the default to a reasonable number of most-recent entries.
-    # If a client truly wants everything, it can pass count="all" (or count="*") explicitly.
     if isinstance(count, str) and count.strip().lower() in ("all", "*"):
         count = None
     else:
         count = coerce_int(count)
 
-    if action == "get" and count is None:
-        count = 10
+    # Default count to 100 when action is "get" and no count or page_size is specified
+    if action == "get" and count is None and coerced_page_size is None:
+        count = 100
 
     # Prepare parameters for the C# handler
     params_dict = {
         "action": action,
         "types": types,
         "count": count,
+        "sinceSequenceId": coerced_since_seq,
+        "sinceTimestamp": since_timestamp,
         "filterText": filter_text,
         "filterRegex": filter_regex,
-        "sinceTimestamp": since_timestamp,
         "pageSize": coerced_page_size,
         "cursor": coerced_cursor,
-        "format": format.lower() if isinstance(format, str) else format,
-        "includeStacktrace": include_stacktrace
+        "countOnly": count_only,
+        "includeStacktrace": include_stacktrace,
     }
-
-    # Remove None values unless it's 'count' (as None might mean 'all')
-    params_dict = {k: v for k, v in params_dict.items()
-                   if v is not None or k == 'count'}
-
-    # Add count back if it was None, explicitly sending null might be important for C# logic
-    if 'count' not in params_dict:
-        params_dict['count'] = None
+    params_dict = {k: v for k, v in params_dict.items() if v is not None}
 
     # Use centralized retry helper with instance routing
     resp = await send_with_unity_instance(async_send_command_with_retry, unity_instance, "read_console", params_dict)
-    if isinstance(resp, dict) and resp.get("success") and not include_stacktrace:
-        # Strip stacktrace fields from returned lines if present
-        try:
-            data = resp.get("data")
-            if isinstance(data, dict):
-                for key in ("lines", "items"):
-                    if key in data and isinstance(data[key], list):
-                        _strip_stacktrace_from_list(data[key])
-                        break
-            elif isinstance(data, list):
-                _strip_stacktrace_from_list(data)
-        except Exception:
-            pass
     return resp if isinstance(resp, dict) else {"success": False, "message": str(resp)}
