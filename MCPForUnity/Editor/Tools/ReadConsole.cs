@@ -87,7 +87,7 @@ namespace MCPForUnity.Editor.Tools
             // Parse parameters
             var typesToken = p.GetRaw("types") as JArray;
             var types = typesToken?.Select(t => t.ToString().ToLower()).ToList()
-                ?? new List<string> { "error", "warning" };
+                ?? new List<string> { "error", "warning", "log" };
 
             int? count = p.GetInt("count");
             int? pageSize = p.GetInt("pageSize");
