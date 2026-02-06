@@ -132,7 +132,10 @@ namespace MCPForUnity.Editor.Services
                     int mode = (int)_modeField.GetValue(logEntryInstance);
                     string message = (string)_messageField.GetValue(logEntryInstance) ?? "";
 
-                    LogType type = GetLogTypeFromMode(mode);
+                    // For compiler diagnostics, trust message content over mode bits.
+                    // Unity can set both error and warning mode bits on compiler output,
+                    // causing warnings to be misclassified as errors by mode bits alone.
+                    LogType type = InferTypeFromMessage(message) ?? GetLogTypeFromMode(mode);
 
                     // Extract first line only
                     int newlineIdx = message.IndexOf('\n');
@@ -151,6 +154,26 @@ namespace MCPForUnity.Editor.Services
                 try { _endGettingEntriesMethod?.Invoke(null, null); }
                 catch { /* ignore */ }
             }
+        }
+
+        /// <summary>
+        /// For compiler diagnostics (e.g. "error CS0246", "warning CS0414"),
+        /// the message content is more reliable than mode bits.
+        /// Returns null if the message doesn't match a known compiler pattern.
+        /// </summary>
+        private static LogType? InferTypeFromMessage(string message)
+        {
+            if (string.IsNullOrEmpty(message)) return null;
+
+            // Compiler diagnostics: "warning CSxxxx" / "error CSxxxx"
+            if (message.IndexOf(": warning CS", StringComparison.Ordinal) >= 0 ||
+                message.IndexOf(": warning ", StringComparison.OrdinalIgnoreCase) >= 0)
+                return LogType.Warning;
+            if (message.IndexOf(": error CS", StringComparison.Ordinal) >= 0 ||
+                message.IndexOf(": error ", StringComparison.OrdinalIgnoreCase) >= 0)
+                return LogType.Error;
+
+            return null;
         }
 
         private static LogType GetLogTypeFromMode(int mode)
