@@ -113,11 +113,25 @@ namespace MCPForUnity.Editor.Tools
                 ? "compiling"
                 : (EditorApplication.isUpdating ? "asset_import" : "idle");
 
+            bool compilationFailed = !EditorApplication.isCompiling && EditorUtility.scriptCompilationFailed;
+
+            if (compilationFailed && shouldWaitForReady)
+            {
+                return new ErrorResponse("compilation_failed", new
+                {
+                    refresh_triggered = refreshTriggered,
+                    compile_requested = compileRequested,
+                    resulting_state = resultingState,
+                    hint = "Script compilation failed. Check read_console with types=[\"error\"] for compiler diagnostics."
+                });
+            }
+
             return new SuccessResponse("Refresh requested.", new
             {
                 refresh_triggered = refreshTriggered,
                 compile_requested = compileRequested,
                 resulting_state = resultingState,
+                script_compilation_failed = compilationFailed,
                 hint = shouldWaitForReady
                     ? "Unity refresh completed; editor should be ready."
                     : "If Unity enters compilation/domain reload, poll editor_state until ready_for_tools is true."

@@ -64,6 +64,11 @@ namespace MCPForUnity.Editor.Tools
 
                         if (!EditorApplication.isPlaying)
                         {
+                            if (EditorUtility.scriptCompilationFailed)
+                            {
+                                return new ErrorResponse("Cannot enter play mode: script compilation failed. Check read_console with types=[\"error\"] for compiler diagnostics.");
+                            }
+
                             EditorApplication.isPlaying = true;
                             if (paused)
                             {
