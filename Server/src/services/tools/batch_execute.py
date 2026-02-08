@@ -16,13 +16,21 @@ MAX_COMMANDS_PER_BATCH = 25
 
 @mcp_for_unity_tool(
     name="batch_execute",
-    description=(
-        "Executes multiple MCP commands in a single batch for dramatically better performance. "
-        "STRONGLY RECOMMENDED when creating/modifying multiple objects, adding components to multiple targets, "
-        "or performing any repetitive operations. Reduces latency and token costs by 10-100x compared to "
-        "sequential tool calls. Supports up to 25 commands per batch. "
-        "Example: creating 5 cubes → use 1 batch_execute with 5 create commands instead of 5 separate calls."
-    ),
+    description="""Execute multiple MCP commands in ONE call. BLOCKING - waits for all commands to complete.
+
+STRONGLY RECOMMENDED for:
+- Creating/modifying multiple objects
+- Adding components to multiple targets
+- Any repetitive operations
+
+Benefits: 10-100x faster than sequential calls. Max 25 commands per batch.
+
+Example: Instead of 5 separate manage_gameobject calls to create 5 cubes, use 1 batch_execute with 5 commands.
+
+Options:
+- commands: List of {tool: 'tool_name', params: {...}} objects
+- parallel: Run read-only commands in parallel
+- fail_fast: Stop on first failure""",
     annotations=ToolAnnotations(
         title="Batch Execute",
         destructiveHint=True,

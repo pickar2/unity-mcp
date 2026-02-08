@@ -14,7 +14,7 @@ from transport.legacy.unity_connection import async_send_command_with_retry
 
 
 @mcp_for_unity_tool(
-    description="Execute a Unity menu item by path.",
+    description="Execute a Unity menu item by path (e.g., 'File/Save Project').",
     annotations=ToolAnnotations(
         title="Execute Menu Item",
         destructiveHint=True,

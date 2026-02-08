@@ -198,6 +198,8 @@ def _enrich_advice_and_staleness(state_v2: dict[str, Any]) -> dict[str, Any]:
         blocking.append("asset_refresh")
     if is_stale:
         blocking.append("stale_status")
+    if compilation.get("script_compilation_failed") is True:
+        blocking.append("script_compilation_failed")
 
     ready_for_tools = len(blocking) == 0
 

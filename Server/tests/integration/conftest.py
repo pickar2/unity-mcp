@@ -90,5 +90,17 @@ fastmcp_server.middleware = fastmcp_server_middleware
 sys.modules.setdefault("fastmcp.server", fastmcp_server)
 sys.modules.setdefault("fastmcp.server.middleware", fastmcp_server_middleware)
 
+# Stub fastmcp.exceptions submodule
+fastmcp_exceptions = types.ModuleType("fastmcp.exceptions")
+
+
+class _DummyToolError(Exception):
+    """ToolError stub."""
+    pass
+
+
+fastmcp_exceptions.ToolError = _DummyToolError
+sys.modules.setdefault("fastmcp.exceptions", fastmcp_exceptions)
+
 # Note: starlette is now a proper dependency (via mcp package), so we don't stub it anymore.
 # The real starlette package will be imported when needed.

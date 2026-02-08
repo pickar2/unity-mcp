@@ -44,9 +44,9 @@ ALL_ACTIONS = ["ping"] + PARTICLE_ACTIONS + VFX_ACTIONS + LINE_ACTIONS + TRAIL_A
 
 @mcp_for_unity_tool(
     description=(
-        "Manage Unity VFX components (ParticleSystem, VisualEffect, LineRenderer, TrailRenderer). "
-        "Action prefixes: particle_*, vfx_*, line_*, trail_*. "
-        "Action-specific parameters go in `properties` (keys match ManageVFX.cs)."
+        "Manage Unity VFX components: ParticleSystem, VisualEffect, LineRenderer, TrailRenderer.\n\n"
+        "Action prefixes: particle_*, vfx_*, line_*, trail_*.\n"
+        "Action-specific parameters go in `properties`."
     ),
     annotations=ToolAnnotations(
         title="Manage VFX",

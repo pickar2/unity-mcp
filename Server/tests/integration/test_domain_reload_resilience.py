@@ -118,21 +118,24 @@ async def test_read_console_during_simulated_reload(monkeypatch):
 
     call_count = [0]
 
-    async def fake_send_command(*args, **kwargs):
+    async def fake_send_with_unity_instance(_send_fn, _unity_instance, _command_type, params, **_kwargs):
         """Simulate successful command execution."""
         call_count[0] += 1
         return {
             "success": True,
             "message": f"Retrieved {call_count[0]} log entries.",
-            "data": ["<b><color=#2EA3FF>MCP-FOR-UNITY</color></b>: Auto-discovered 10 tools"]
+            "data": {
+                "entries": [{"sequenceId": call_count[0], "timestamp": "2026-01-01T00:00:00Z", "type": "log", "message": "Auto-discovered 10 tools", "stackTrace": None}],
+                "latestSequenceId": call_count[0]
+            }
         }
 
-    # Patch the async_send_command_with_retry directly
+    # Patch send_with_unity_instance in the read_console module
     import services.tools.read_console
     monkeypatch.setattr(
         services.tools.read_console,
-        "async_send_command_with_retry",
-        fake_send_command
+        "send_with_unity_instance",
+        fake_send_with_unity_instance
     )
 
     # Run multiple read_console calls rapidly (simulating the stress test)
@@ -143,7 +146,6 @@ async def test_read_console_during_simulated_reload(monkeypatch):
             action="get",
             types=["all"],
             count=50,
-            format="plain",
             include_stacktrace=False
         )
         results.append(result)

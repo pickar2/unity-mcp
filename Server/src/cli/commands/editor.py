@@ -50,6 +50,31 @@ def stop():
         print_success("Stopped play mode")
 
 
+@editor.command("step")
+@click.option(
+    "--frames", "-n",
+    default=1,
+    type=int,
+    help="Number of frames to step (default: 1)."
+)
+@handle_unity_errors
+def step(frames: int):
+    """Step simulation forward by N frames (requires play mode).
+
+    Warning: Steps are synchronous - large frame counts will block until complete.
+
+    \b
+    Examples:
+        unity-mcp editor step
+        unity-mcp editor step --frames 10
+    """
+    config = get_config()
+    result = run_command("manage_editor", {"action": "step", "frames": frames}, config)
+    click.echo(format_output(result, config.format))
+    if result.get("success"):
+        print_success(f"Stepped {frames} frame(s)")
+
+
 @editor.command("console")
 @click.option(
     "--type", "-t",
@@ -72,6 +97,12 @@ def stop():
     help="Filter messages containing this text."
 )
 @click.option(
+    "--regex", "-r",
+    "filter_regex",
+    default=None,
+    help="Regex pattern filter (mutually exclusive with --filter)."
+)
+@click.option(
     "--stacktrace", "-s",
     is_flag=True,
     help="Include stack traces."
@@ -82,7 +113,7 @@ def stop():
     help="Clear the console instead of reading."
 )
 @handle_unity_errors
-def console(log_types: tuple, count: int, filter_text: Optional[str], stacktrace: bool, clear: bool):
+def console(log_types: tuple, count: int, filter_text: Optional[str], filter_regex: Optional[str], stacktrace: bool, clear: bool):
     """Read or clear the Unity console.
 
     \b
@@ -90,9 +121,14 @@ def console(log_types: tuple, count: int, filter_text: Optional[str], stacktrace
         unity-mcp editor console
         unity-mcp editor console --type error --count 20
         unity-mcp editor console --filter "NullReference" --stacktrace
+        unity-mcp editor console --regex "Error|Warning.*null"
         unity-mcp editor console --clear
     """
     config = get_config()
+
+    if filter_text and filter_regex:
+        print_error("Cannot use both --filter and --regex - choose one.")
+        return
 
     if clear:
         result = run_command("read_console", {"action": "clear"}, config)
@@ -110,6 +146,8 @@ def console(log_types: tuple, count: int, filter_text: Optional[str], stacktrace
 
     if filter_text:
         params["filter_text"] = filter_text
+    if filter_regex:
+        params["filter_regex"] = filter_regex
 
     result = run_command("read_console", params, config)
     click.echo(format_output(result, config.format))
@@ -445,3 +483,58 @@ def custom_tool(tool_name: str, params: str):
                     print_info(f'Example: unity-mcp editor custom-tool "{matches[0]}"')
             except UnityConnectionError:
                 pass
+
+
+@editor.command("buffer")
+@click.argument("target")
+@click.option(
+    "--start", "-s",
+    default=0,
+    type=int,
+    help="Starting element index."
+)
+@click.option(
+    "--count", "-n",
+    default=8,
+    type=int,
+    help="Number of elements to read."
+)
+@click.option(
+    "--format", "-f",
+    "fmt",
+    default=None,
+    help="Format string: 'name:type@offset,...'. Example: 'position:float3@0,velocity:float3@16'"
+)
+@click.option(
+    "--list", "-l",
+    "list_only",
+    is_flag=True,
+    help="List matching buffers without reading data."
+)
+@handle_unity_errors
+def buffer(target: str, start: int, count: int, fmt: Optional[str], list_only: bool):
+    """Inspect ComputeBuffer/GraphicsBuffer contents.
+
+    TARGET specifies the buffer location:
+    - "GameObject/Component.field" - find by name
+    - "instanceId:N/Component.field" - find by ID
+    - "*/Component.*" - discovery mode
+
+    \b
+    Examples:
+        unity-mcp editor buffer "*/ParticleSystem.*" --list
+        unity-mcp editor buffer "Emitter/ParticleSim.particleBuffer" -s 1842 -n 8 -f "pos:float3@0,vel:float3@16"
+    """
+    config = get_config()
+
+    params: dict[str, Any] = {"target": target}
+    if list_only:
+        params["list_only"] = True
+    else:
+        params["start"] = start
+        params["count"] = count
+        if fmt:
+            params["format"] = fmt
+
+    result = run_command("inspect_buffer", params, config)
+    click.echo(format_output(result, config.format))

@@ -18,9 +18,8 @@ from services.tools.preflight import preflight
 
 @mcp_for_unity_tool(
     description=(
-        "Performs asset operations (import, create, modify, delete, etc.) in Unity.\n\n"
-        "Tip (payload safety): for `action=\"search\"`, prefer paging (`page_size`, `page_number`) and keep "
-        "`generate_preview=false` (previews can add large base64 blobs)."
+        "Asset operations: import, create, modify, delete, duplicate, move, rename, search, get_info, create_folder.\n\n"
+        "Tip: for search, prefer paging (page_size, page_number) and keep generate_preview=false."
     ),
     annotations=ToolAnnotations(
         title="Manage Asset",

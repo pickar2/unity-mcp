@@ -162,6 +162,9 @@ namespace MCPForUnity.Editor.Services
 
             [JsonProperty("last_domain_reload_after_unix_ms")]
             public long? LastDomainReloadAfterUnixMs { get; set; }
+
+            [JsonProperty("script_compilation_failed")]
+            public bool? ScriptCompilationFailed { get; set; }
         }
 
         private sealed class EditorStateAssets
@@ -446,7 +449,8 @@ namespace MCPForUnity.Editor.Services
                     LastCompileStartedUnixMs = _lastCompileStartedUnixMs,
                     LastCompileFinishedUnixMs = _lastCompileFinishedUnixMs,
                     LastDomainReloadBeforeUnixMs = _domainReloadBeforeUnixMs,
-                    LastDomainReloadAfterUnixMs = _domainReloadAfterUnixMs
+                    LastDomainReloadAfterUnixMs = _domainReloadAfterUnixMs,
+                    ScriptCompilationFailed = EditorUtility.scriptCompilationFailed
                 },
                 Assets = new EditorStateAssets
                 {

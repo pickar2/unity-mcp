@@ -5,6 +5,7 @@ using MCPForUnity.Editor.Helpers;
 using MCPForUnity.Editor.Resources.Tests;
 using MCPForUnity.Editor.Services;
 using Newtonsoft.Json.Linq;
+using UnityEditor;
 using UnityEditor.TestTools.TestRunner.Api;
 
 namespace MCPForUnity.Editor.Tools
@@ -13,21 +14,32 @@ namespace MCPForUnity.Editor.Tools
     /// Starts a Unity Test Runner run asynchronously and returns a job id immediately.
     /// Use get_test_job(job_id) to poll status/results.
     /// </summary>
-    [McpForUnityTool("run_tests", AutoRegister = false)]
+    [McpForUnityTool("run_tests", AutoRegister = false,
+        Description = "Starts a Unity test run asynchronously and returns a job_id immediately. " +
+        "Poll with get_test_job for progress. " +
+        "Set recompile=true to trigger script recompilation before running (returns error if compilation fails). " +
+        "Filter options: test_names (exact full names like 'Namespace.Class.Method'), " +
+        "group_names (regex patterns like '.*MethodName.*'), " +
+        "category_names (NUnit categories), assembly_names (assembly filter).")]
     public static class RunTests
     {
-        public static Task<object> HandleCommand(JObject @params)
+        public static async Task<object> HandleCommand(JObject @params)
         {
             try
             {
-                // Check for clear_stuck action first
+                // Check for clear_stuck action first (allowed in play mode)
                 if (ParamCoercion.CoerceBool(@params?["clear_stuck"], false))
                 {
                     bool wasCleared = TestJobManager.ClearStuckJob();
-                    return Task.FromResult<object>(new SuccessResponse(
+                    return new SuccessResponse(
                         wasCleared ? "Stuck job cleared." : "No running job to clear.",
                         new { cleared = wasCleared }
-                    ));
+                    );
+                }
+
+                if (EditorApplication.isPlaying)
+                {
+                    return new ErrorResponse("Cannot run tests in play mode. Exit play mode first.");
                 }
 
                 string modeStr = @params?["mode"]?.ToString();
@@ -38,32 +50,43 @@ namespace MCPForUnity.Editor.Tools
 
                 if (!ModeParser.TryParse(modeStr, out var parsedMode, out var parseError))
                 {
-                    return Task.FromResult<object>(new ErrorResponse(parseError));
+                    return new ErrorResponse(parseError);
                 }
 
-                bool includeDetails = ParamCoercion.CoerceBool(@params?["includeDetails"], false);
-                bool includeFailedTests = ParamCoercion.CoerceBool(@params?["includeFailedTests"], false);
+                var recompile = ParamCoercion.CoerceBool(
+                    @params?["recompile"], false);
+
+                if (recompile)
+                {
+                    var compileError = await RecompileHelper.RecompileAndWaitAsync().ConfigureAwait(true);
+                    if (compileError != null) return compileError;
+                }
+
+                bool includeDetails = ParamCoercion.CoerceBool(
+                    @params?["includeDetails"] ?? @params?["include_details"], false);
+                bool includeFailedTests = ParamCoercion.CoerceBool(
+                    @params?["includeFailedTests"] ?? @params?["include_failed_tests"], false);
 
                 var filterOptions = GetFilterOptions(@params);
                 string jobId = TestJobManager.StartJob(parsedMode.Value, filterOptions);
 
-                return Task.FromResult<object>(new SuccessResponse("Test job started.", new
+                return new SuccessResponse("Test job started.", new
                 {
                     job_id = jobId,
                     status = "running",
                     mode = parsedMode.Value.ToString(),
                     include_details = includeDetails,
                     include_failed_tests = includeFailedTests
-                }));
+                });
             }
             catch (Exception ex)
             {
                 // Normalize the already-running case to a stable error token.
                 if (ex.Message != null && ex.Message.IndexOf("already in progress", StringComparison.OrdinalIgnoreCase) >= 0)
                 {
-                    return Task.FromResult<object>(new ErrorResponse("tests_running", new { reason = "tests_running", retry_after_ms = 5000 }));
+                    return new ErrorResponse("tests_running", new { reason = "tests_running", retry_after_ms = 5000 });
                 }
-                return Task.FromResult<object>(new ErrorResponse($"Failed to start test job: {ex.Message}"));
+                return new ErrorResponse($"Failed to start test job: {ex.Message}");
             }
         }
 
@@ -74,14 +97,62 @@ namespace MCPForUnity.Editor.Tools
                 return null;
             }
 
-            string[] ParseStringArray(string key)
+            string[] ParseStringArray(string camelCaseKey)
             {
-                var token = @params[key];
+                var token = @params[camelCaseKey];
+                if (token == null)
+                {
+                    var snakeKey = StringCaseUtility.ToSnakeCase(camelCaseKey);
+                    token = @params[snakeKey];
+                }
                 if (token == null) return null;
+                // Handle double-serialized arrays: the MCP bridge may send a JSON array
+                // string (e.g. "[\"name\"]") as a single string element inside an outer array.
+                // Unwrap by attempting to parse string values that look like JSON arrays.
+                string[] UnwrapValues(string[] raw)
+                {
+                    if (raw == null) return null;
+                    var unwrapped = new System.Collections.Generic.List<string>();
+                    foreach (var s in raw)
+                    {
+                        if (s != null && s.StartsWith("[") && s.EndsWith("]"))
+                        {
+                            try
+                            {
+                                var inner = JArray.Parse(s);
+                                foreach (var item in inner.Values<string>())
+                                {
+                                    if (!string.IsNullOrWhiteSpace(item))
+                                        unwrapped.Add(item);
+                                }
+                                continue;
+                            }
+                            catch { }
+                        }
+                        if (!string.IsNullOrWhiteSpace(s))
+                            unwrapped.Add(s);
+                    }
+                    return unwrapped.Count > 0 ? unwrapped.ToArray() : null;
+                }
+
                 if (token.Type == JTokenType.String)
                 {
                     var value = token.ToString();
-                    return string.IsNullOrWhiteSpace(value) ? null : new[] { value };
+                    if (string.IsNullOrWhiteSpace(value)) return null;
+                    // Try to parse as JSON array in case of double-serialization
+                    if (value.StartsWith("[") && value.EndsWith("]"))
+                    {
+                        try
+                        {
+                            var inner = JArray.Parse(value);
+                            var innerValues = inner.Values<string>()
+                                .Where(s => !string.IsNullOrWhiteSpace(s))
+                                .ToArray();
+                            if (innerValues.Length > 0) return innerValues;
+                        }
+                        catch { }
+                    }
+                    return new[] { value };
                 }
                 if (token.Type == JTokenType.Array)
                 {
@@ -91,7 +162,7 @@ namespace MCPForUnity.Editor.Tools
                         .Values<string>()
                         .Where(s => !string.IsNullOrWhiteSpace(s))
                         .ToArray();
-                    return values.Length > 0 ? values : null;
+                    return UnwrapValues(values);
                 }
                 return null;
             }

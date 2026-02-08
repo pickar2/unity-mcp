@@ -22,13 +22,10 @@ REQUIRED_PARAMS = {
 
 @mcp_for_unity_tool(
     description=(
-        "Manages Unity Prefab assets via headless operations (no UI, no prefab stages). "
-        "Actions: get_info, get_hierarchy, create_from_gameobject, modify_contents. "
-        "Use modify_contents for headless prefab editing - ideal for automated workflows. "
-        "Use create_child parameter with modify_contents to add child GameObjects to a prefab "
-        "(single object or array for batch creation in one save). "
-        "Example: create_child=[{\"name\": \"Child1\", \"primitive_type\": \"Sphere\", \"position\": [1,0,0]}, "
-        "{\"name\": \"Child2\", \"primitive_type\": \"Cube\", \"parent\": \"Child1\"}]. "
+        "Manage Unity Prefab assets via headless operations (no UI).\n\n"
+        "Actions: get_info, get_hierarchy, create_from_gameobject, modify_contents.\n"
+        "Use modify_contents for headless prefab editing - ideal for automated workflows.\n"
+        "Use create_child with modify_contents to add children (single or array for batch).\n"
         "Use manage_asset action=search filterType=Prefab to list prefabs."
     ),
     annotations=ToolAnnotations(

@@ -10,6 +10,10 @@ from core.telemetry_decorator import telemetry_tool
 from core.logging_decorator import log_execution
 from utils.module_discovery import discover_modules
 from services.registry import get_registered_tools
+from transport.param_validation_middleware import (
+    ParamValidationMiddleware,
+    build_tool_params_map,
+)
 
 logger = logging.getLogger("mcp-for-unity-server")
 
@@ -39,6 +43,10 @@ def register_all_tools(mcp: FastMCP, *, project_scoped_tools: bool = True):
     if not tools:
         logger.warning("No MCP tools registered!")
         return
+
+    # Build param map from original signatures before decorator wrapping
+    tool_params = build_tool_params_map()
+    mcp.add_middleware(ParamValidationMiddleware(tool_params))
 
     for tool_info in tools:
         func = tool_info['func']
