@@ -45,6 +45,10 @@ mcpforunity://{category}/{resource_path}[?query_params]
     "path": "Assets/Scenes/Main.unity",
     "name": "Main"
   },
+  "compilation": {
+    "is_compiling": false,
+    "script_compilation_failed": false
+  },
   "ready_for_tools": true,
   "blocking_reasons": [],
   "recommended_retry_after_ms": null,
@@ -58,7 +62,8 @@ mcpforunity://{category}/{resource_path}[?query_params]
 **Key Fields:**
 - `ready_for_tools`: Only proceed if `true`
 - `is_compiling`: Wait if `true`
-- `blocking_reasons`: Array explaining why tools might fail
+- `script_compilation_failed`: Last compilation had errors - check `read_console(types=["error"])`
+- `blocking_reasons`: Array explaining why tools might fail (includes `"script_compilation_failed"`)
 - `recommended_retry_after_ms`: Suggested wait time
 
 ### mcpforunity://editor/selection

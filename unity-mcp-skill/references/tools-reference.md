@@ -10,8 +10,11 @@ Complete reference for all MCP tools. Each tool includes parameters, types, and 
 - [Script Tools](#script-tools)
 - [Asset Tools](#asset-tools)
 - [Material & Shader Tools](#material--shader-tools)
+- [Shader, ScriptableObject & VFX Tools](#shader-scriptableobject--vfx-tools)
 - [Editor Control Tools](#editor-control-tools)
 - [Testing Tools](#testing-tools)
+- [GPU Debugging Tools](#gpu-debugging-tools)
+- [Play Mode Restrictions](#play-mode-restrictions)
 
 ---
 
@@ -56,6 +59,8 @@ refresh_unity(
 )
 ```
 
+**Play mode note:** `compile="request"` is blocked in play mode (would trigger domain reload and exit play mode).
+
 ---
 
 ## Scene Tools
@@ -80,9 +85,9 @@ manage_scene(action="screenshot")  # Returns base64 PNG
 # Other actions
 manage_scene(action="get_active")        # Current scene info
 manage_scene(action="get_build_settings") # Build settings
-manage_scene(action="create", name="NewScene", path="Assets/Scenes/")
-manage_scene(action="load", path="Assets/Scenes/Main.unity")
-manage_scene(action="save")
+manage_scene(action="create", name="NewScene", path="Assets/Scenes/")  # blocked in play mode
+manage_scene(action="load", path="Assets/Scenes/Main.unity")           # blocked in play mode
+manage_scene(action="save")                                             # blocked in play mode
 ```
 
 ### find_gameobjects
@@ -91,8 +96,9 @@ Search for GameObjects (returns instance IDs only).
 
 ```python
 find_gameobjects(
-    search_term="Player",        # str, required
+    search_term="Player",        # str, required (alias: name)
     search_method="by_name",     # "by_name"|"by_tag"|"by_layer"|"by_component"|"by_path"|"by_id"
+                                 # (alias: search_type)
     include_inactive=False,      # bool|str
     page_size=50,                # int, default 50, max 500
     cursor=0                     # int, pagination cursor
@@ -302,7 +308,7 @@ Check script for syntax/semantic errors.
 ```python
 validate_script(
     uri="mcpforunity://path/Assets/Scripts/MyScript.cs",
-    level="standard",            # "basic" | "standard"
+    level="basic",               # "basic" | "standard"
     include_diagnostics=True     # include full error details
 )
 ```
@@ -481,6 +487,71 @@ manage_texture(
 )
 ```
 
+## Shader, ScriptableObject & VFX Tools
+
+### manage_shader
+
+CRUD operations for shader scripts. Write actions **blocked in play mode**.
+
+```python
+manage_shader(
+    action="create",             # "create"|"read"|"update"|"delete"
+    name="MyShader",             # shader name (no extension)
+    path="Assets/Shaders",      # asset folder path
+    contents="Shader \"Custom/MyShader\" { ... }"  # shader code (create/update)
+)
+
+# Read shader source
+manage_shader(action="read", name="MyShader", path="Assets/Shaders")
+```
+
+### manage_scriptable_object
+
+Create and modify ScriptableObject assets.
+
+```python
+# Create
+manage_scriptable_object(
+    action="create",
+    type_name="MyNamespace.GameConfig",  # namespace-qualified type
+    folder_path="Assets/Data",
+    asset_name="DefaultConfig",
+    overwrite=False,
+    patches=[                    # property patches to apply
+        {"propertyPath": "maxHealth", "value": 100},
+        {"propertyPath": "speed", "value": 5.0}
+    ]
+)
+
+# Modify existing
+manage_scriptable_object(
+    action="modify",
+    target={"path": "Assets/Data/DefaultConfig.asset"},  # or {"guid": "..."}
+    patches=[{"propertyPath": "maxHealth", "value": 200}],
+    dry_run=False                # validate without applying
+)
+```
+
+### manage_vfx
+
+Manage VFX components: ParticleSystem, VisualEffect, LineRenderer, TrailRenderer.
+
+```python
+manage_vfx(
+    action="particle_play",      # prefix: particle_*, vfx_*, line_*, trail_*
+    target="MyParticles",        # GameObject name/path/id
+    search_method="by_name",     # "by_name"|"by_path"|"by_id"|"by_tag"|"by_layer"
+    properties={...}             # action-specific parameters
+)
+
+# Common actions:
+# particle_play, particle_stop, particle_pause, particle_restart, particle_clear
+# particle_read, particle_write, particle_enable_module, particle_add_burst
+# vfx_play, vfx_stop, vfx_pause, vfx_reinit, vfx_read, vfx_set_*
+# line_read, line_write
+# trail_read, trail_write
+```
+
 ---
 
 ## Editor Control Tools
@@ -490,18 +561,27 @@ manage_texture(
 Control Unity Editor state.
 
 ```python
-manage_editor(action="play")               # Enter play mode
-manage_editor(action="pause")              # Pause play mode
-manage_editor(action="stop")               # Exit play mode
+# Play mode control
+manage_editor(action="play")                          # Enter play mode
+manage_editor(action="play", recompile=True)           # Compile, check errors, then play
+manage_editor(action="play", paused=True)              # Enter play mode paused
+manage_editor(action="pause")                          # Pause play mode
+manage_editor(action="stop")                           # Exit play mode
+manage_editor(action="step")                           # Single frame step (while paused)
 
+# Editor tools
 manage_editor(action="set_active_tool", tool_name="Move")  # Move/Rotate/Scale/etc.
 
+# Tags and layers
 manage_editor(action="add_tag", tag_name="Enemy")
 manage_editor(action="remove_tag", tag_name="OldTag")
-
 manage_editor(action="add_layer", layer_name="Projectiles")
 manage_editor(action="remove_layer", layer_name="OldLayer")
 ```
+
+**Play mode notes:**
+- `recompile=true` while already in play mode returns an error (can't recompile during play)
+- Returns error if `scriptCompilationFailed` and trying to enter play mode
 
 ### execute_menu_item
 
@@ -515,21 +595,28 @@ execute_menu_item(menu_path="Window/General/Console")
 
 ### read_console
 
-Read or clear Unity console messages.
+Read or clear Unity console messages. Uses a ring buffer with sequence IDs for efficient polling.
 
 ```python
 # Get recent messages
 read_console(
-    action="get",
-    types=["error", "warning", "log"],  # or ["all"]
-    count=10,                    # max messages (ignored with paging)
-    filter_text="NullReference", # optional text filter
+    action="get",                # "get" | "clear"
+    types=["error", "warning", "log"],  # or ["all"] - default: all three
+    count=100,                   # max messages (default 100, ignored with paging)
+    since_sequence_id=2790,      # only entries after this ID (for polling)
+    # after_sequence_id=2790,    # alias for since_sequence_id
     since_timestamp="2024-01-01T00:00:00Z",  # optional time filter
+    filter_text="NullReference", # substring filter (case-insensitive)
+    filter_regex="CS\\d{4}",     # regex filter (mutually exclusive with filter_text)
     page_size=50,
     cursor=0,
-    format="detailed",           # "plain"|"detailed"|"json"
-    include_stacktrace=True
+    count_only=False,            # return only counts by type, no entries
+    include_stacktrace=False
 )
+# Returns: {entries: [...], latestSequenceId: 2795, totalMatched: 5, ...}
+
+# Poll for new entries since last read
+read_console(since_sequence_id=2795, types=["error"])
 
 # Clear console
 read_console(action="clear")
@@ -541,11 +628,12 @@ read_console(action="clear")
 
 ### run_tests
 
-Start async test execution.
+Start async test execution. **Blocked in play mode** - exit play mode first.
 
 ```python
 result = run_tests(
     mode="EditMode",             # "EditMode"|"PlayMode"
+    recompile=False,             # bool - trigger recompilation before running
     test_names=["MyTests.TestA", "MyTests.TestB"],  # specific tests
     group_names=["Integration*"],  # regex patterns
     category_names=["Unit"],     # NUnit categories
@@ -568,6 +656,33 @@ result = get_test_job(
     include_details=False
 )
 # Returns: {"status": "complete"|"running"|"failed", "results": {...}}
+```
+
+---
+
+## GPU Debugging Tools
+
+### inspect_buffer
+
+Inspect ComputeBuffer/GraphicsBuffer contents via reflection. **Requires play mode.**
+
+```python
+# Discovery: list all buffers on matching components
+inspect_buffer(
+    target="*/ParticleCompute.*",    # wildcard discovery
+    list_only=True
+)
+
+# Read buffer data with structured format
+inspect_buffer(
+    target="ParticleManager/ParticleCompute.positionBuffer",  # GameObject/Component.field
+    # target="instanceId:12345/ParticleCompute.positionBuffer",  # by instance ID
+    start=0,                     # start element (0-based, default 0)
+    count=8,                     # elements to read (default 8)
+    format="position:float3@0,velocity:float3@16,mass:float@32"
+    # Format: "name:type@byteOffset,..." - supported types: float, float2, float3,
+    #   float4, int, int2, int3, int4, uint, half. Omit for raw base64.
+)
 ```
 
 ---
@@ -604,3 +719,21 @@ execute_custom_tool(
 ```
 
 Discover available custom tools via `mcpforunity://custom-tools` resource.
+
+---
+
+## Play Mode Restrictions
+
+Some tools are blocked or behave differently during play mode:
+
+| Tool | Restriction |
+|------|-------------|
+| `run_tests` | Blocked entirely (except `clear_stuck`) |
+| `manage_script` | Write actions blocked (create/update/delete/edit/apply_text_edits) |
+| `manage_shader` | Write actions blocked (create/update/delete) |
+| `manage_scene` | create/load/save blocked |
+| `refresh_unity` | `compile="request"` blocked |
+| `manage_editor` | `recompile=true` blocked while already playing |
+| `inspect_buffer` | **Requires** play mode (blocked outside play mode) |
+
+Read-only operations (get_hierarchy, find_gameobjects, read_console, resources, etc.) work in both modes.
