@@ -22,16 +22,27 @@ Returns instance IDs only (paginated). Use mcpforunity://scene/gameobject/{id} r
 async def find_gameobjects(
     ctx: Context,
     search_term: Annotated[
-        str,
-        Field(description="The value to search for (name, tag, layer name, component type, or path)")
-    ],
+        str | None,
+        Field(default=None, description="The value to search for (name, tag, layer name, component type, or path)")
+    ] = None,
+    name: Annotated[
+        str | None,
+        Field(default=None, description="Alias for search_term.")
+    ] = None,
     search_method: Annotated[
-        Literal["by_name", "by_tag", "by_layer", "by_component", "by_path", "by_id"],
+        Literal["by_name", "by_tag", "by_layer", "by_component", "by_path", "by_id"] | None,
         Field(
-            default="by_name",
+            default=None,
             description="How to search for GameObjects"
         )
-    ] = "by_name",
+    ] = None,
+    search_type: Annotated[
+        Literal["by_name", "by_tag", "by_layer", "by_component", "by_path", "by_id"] | None,
+        Field(
+            default=None,
+            description="Alias for search_method."
+        )
+    ] = None,
     include_inactive: Annotated[
         bool | str | None,
         Field(
@@ -66,6 +77,10 @@ async def find_gameobjects(
     - mcpforunity://scene/gameobject/{id}/component/{name} - Get specific component
     """
     unity_instance = get_unity_instance_from_context(ctx)
+
+    # Resolve aliases
+    search_term = search_term or name
+    search_method = search_method or search_type or "by_name"
 
     # Validate required parameters before preflight I/O
     if not search_term:

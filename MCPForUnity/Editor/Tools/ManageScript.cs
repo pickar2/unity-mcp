@@ -139,6 +139,15 @@ namespace MCPForUnity.Editor.Tools
             }
             string action = actionResult.Value.ToLowerInvariant();
 
+            // Block write actions in play mode: they trigger compilation which exits play mode
+            if (EditorApplication.isPlaying &&
+                (action == "create" || action == "update" || action == "delete" ||
+                 action == "apply_text_edits" || action == "edit"))
+            {
+                return new ErrorResponse(
+                    $"Cannot {action} scripts in play mode: would trigger compilation and exit play mode.");
+            }
+
             var nameResult = p.GetRequired("name");
             if (!nameResult.IsSuccess)
             {

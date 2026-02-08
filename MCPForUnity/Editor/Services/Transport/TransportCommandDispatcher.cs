@@ -257,9 +257,22 @@ namespace MCPForUnity.Editor.Services.Transport
                 }
             }
 
-            foreach (var (id, pending) in ready)
+            // Suppress auto-refresh during command execution.
+            // QueuePlayerLoopUpdate nudges cause Unity to tick, and during that tick
+            // Unity can detect externally-modified C# files and trigger recompilation.
+            // This prevents read-only MCP operations (get_hierarchy, etc.) from causing
+            // unexpected domain reloads while the user edits scripts with an AI assistant.
+            AssetDatabase.DisallowAutoRefresh();
+            try
             {
-                ProcessCommand(id, pending);
+                foreach (var (id, pending) in ready)
+                {
+                    ProcessCommand(id, pending);
+                }
+            }
+            finally
+            {
+                AssetDatabase.AllowAutoRefresh();
             }
             }
             finally

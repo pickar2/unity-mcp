@@ -5,6 +5,7 @@ using MCPForUnity.Editor.Helpers;
 using MCPForUnity.Editor.Resources.Tests;
 using MCPForUnity.Editor.Services;
 using Newtonsoft.Json.Linq;
+using UnityEditor;
 using UnityEditor.TestTools.TestRunner.Api;
 
 namespace MCPForUnity.Editor.Tools
@@ -26,7 +27,7 @@ namespace MCPForUnity.Editor.Tools
         {
             try
             {
-                // Check for clear_stuck action first
+                // Check for clear_stuck action first (allowed in play mode)
                 if (ParamCoercion.CoerceBool(@params?["clear_stuck"], false))
                 {
                     bool wasCleared = TestJobManager.ClearStuckJob();
@@ -34,6 +35,11 @@ namespace MCPForUnity.Editor.Tools
                         wasCleared ? "Stuck job cleared." : "No running job to clear.",
                         new { cleared = wasCleared }
                     );
+                }
+
+                if (EditorApplication.isPlaying)
+                {
+                    return new ErrorResponse("Cannot run tests in play mode. Exit play mode first.");
                 }
 
                 string modeStr = @params?["mode"]?.ToString();

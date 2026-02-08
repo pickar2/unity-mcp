@@ -49,6 +49,15 @@ namespace MCPForUnity.Editor.Tools
             {
                 return new ErrorResponse("Action parameter is required.");
             }
+
+            // Block write actions in play mode: they trigger compilation which exits play mode
+            if (EditorApplication.isPlaying &&
+                (action == "create" || action == "update" || action == "delete"))
+            {
+                return new ErrorResponse(
+                    $"Cannot {action} shaders in play mode: would trigger compilation and exit play mode.");
+            }
+
             if (string.IsNullOrEmpty(name))
             {
                 return new ErrorResponse("Name parameter is required.");

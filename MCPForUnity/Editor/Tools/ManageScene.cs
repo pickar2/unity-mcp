@@ -121,6 +121,14 @@ namespace MCPForUnity.Editor.Tools
                 }
             }
 
+            // Block actions that don't work in play mode
+            if (EditorApplication.isPlaying &&
+                (action == "create" || action == "load" || action == "save"))
+            {
+                return new ErrorResponse(
+                    $"Cannot {action} scenes in play mode. Exit play mode first.");
+            }
+
             // Route action
             try { McpLog.Info($"[ManageScene] Route action='{action}' name='{name}' path='{path}' buildIndex={(buildIndex.HasValue ? buildIndex.Value.ToString() : "null")}", always: false); } catch { }
             switch (action)

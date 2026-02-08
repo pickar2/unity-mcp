@@ -34,6 +34,14 @@ namespace MCPForUnity.Editor.Tools
                 });
             }
 
+            // Block compilation requests in play mode: would trigger domain reload and exit play mode
+            if (EditorApplication.isPlaying &&
+                string.Equals(compile, "request", StringComparison.OrdinalIgnoreCase))
+            {
+                return new ErrorResponse(
+                    "Cannot request compilation in play mode: would trigger domain reload and exit play mode.");
+            }
+
             bool refreshTriggered = false;
             bool compileRequested = false;
 

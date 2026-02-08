@@ -56,6 +56,11 @@ namespace MCPForUnity.Editor.Tools
                 case "play":
                     try
                     {
+                        if (recompile && EditorApplication.isPlaying)
+                        {
+                            return new ErrorResponse("Cannot recompile while in play mode. Exit play mode first.");
+                        }
+
                         if (recompile)
                         {
                             var compileError = await RecompileHelper.RecompileAndWaitAsync().ConfigureAwait(true);

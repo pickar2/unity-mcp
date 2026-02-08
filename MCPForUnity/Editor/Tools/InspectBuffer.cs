@@ -30,6 +30,9 @@ namespace MCPForUnity.Editor.Tools
             if (@params == null)
                 return new ErrorResponse("Parameters cannot be null.");
 
+            if (!EditorApplication.isPlaying)
+                return new ErrorResponse("Cannot inspect buffers: Not in play mode. GPU buffers are only available at runtime.");
+
             var p = new ToolParams(@params);
 
             var targetResult = p.GetRequired("target");

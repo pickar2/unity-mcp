@@ -51,6 +51,8 @@ async def read_console(
                      "Max messages to return in non-paging mode (accepts int or string, e.g., 5 or '5'). Ignored when paging with page_size/cursor."] | None = None,
     since_sequence_id: Annotated[int | str,
                                  "Only return entries with sequenceId greater than this value. Use latestSequenceId from a previous response for efficient polling."] | None = None,
+    after_sequence_id: Annotated[int | str,
+                                 "Alias for since_sequence_id."] | None = None,
     since_timestamp: Annotated[str,
                                "Get messages after this timestamp (ISO 8601)"] | None = None,
     filter_text: Annotated[str, "Text filter for messages (case-insensitive substring match). Mutually exclusive with filter_regex."] | None = None,
@@ -110,7 +112,7 @@ async def read_console(
 
     coerced_page_size = coerce_int(page_size, default=None)
     coerced_cursor = coerce_int(cursor, default=None)
-    coerced_since_seq = coerce_int(since_sequence_id, default=None)
+    coerced_since_seq = coerce_int(since_sequence_id or after_sequence_id, default=None)
 
     # Normalize action if it's a string
     if isinstance(action, str):
