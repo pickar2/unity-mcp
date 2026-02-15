@@ -106,7 +106,11 @@ namespace MCPForUnity.Editor.Services
                     categoryNames = filterOptions?.CategoryNames,
                     assemblyNames = filterOptions?.AssemblyNames
                 };
-                var settings = new ExecutionSettings(filter);
+                var settings = new ExecutionSettings(filter)
+                {
+                    // Prevents Test Runner window from stealing focus during MCP-initiated runs
+                    overloadTestRunSettings = true
+                };
 
                 // Save dirty scenes for all test modes to prevent modal dialogs blocking MCP
                 // (Issue #525: EditMode tests were blocked by save dialog)
