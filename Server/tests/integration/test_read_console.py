@@ -5,6 +5,7 @@ Validates the full-stack behavior: Python parameter handling -> C# command
 dispatching -> response parsing, using monkeypatched send functions to
 simulate the C# side's LogCaptureService responses.
 """
+
 import pytest
 
 from .test_helpers import DummyContext, DummyMCP
@@ -15,10 +16,11 @@ def setup_console_tools():
     mcp = DummyMCP()
     import services.tools.read_console
     from services.registry import get_registered_tools
+
     for tool_info in get_registered_tools():
-        tool_name = tool_info['name']
-        if any(keyword in tool_name for keyword in ['read_console', 'console']):
-            mcp.tools[tool_name] = tool_info['func']
+        tool_name = tool_info["name"]
+        if any(keyword in tool_name for keyword in ["read_console", "console"]):
+            mcp.tools[tool_name] = tool_info["func"]
     return mcp.tools
 
 
@@ -36,15 +38,34 @@ async def test_read_console_get(monkeypatch):
             "success": True,
             "data": {
                 "entries": [
-                    {"sequenceId": 1, "timestamp": "2026-01-01T00:00:00Z", "type": "error", "message": "test error", "stackTrace": None},
-                    {"sequenceId": 2, "timestamp": "2026-01-01T00:00:01Z", "type": "warning", "message": "test warning", "stackTrace": None},
-                    {"sequenceId": 3, "timestamp": "2026-01-01T00:00:02Z", "type": "log", "message": "test log", "stackTrace": None},
+                    {
+                        "sequenceId": 1,
+                        "timestamp": "2026-01-01T00:00:00Z",
+                        "type": "error",
+                        "message": "test error",
+                        "stackTrace": None,
+                    },
+                    {
+                        "sequenceId": 2,
+                        "timestamp": "2026-01-01T00:00:01Z",
+                        "type": "warning",
+                        "message": "test warning",
+                        "stackTrace": None,
+                    },
+                    {
+                        "sequenceId": 3,
+                        "timestamp": "2026-01-01T00:00:02Z",
+                        "type": "log",
+                        "message": "test log",
+                        "stackTrace": None,
+                    },
                 ],
                 "latestSequenceId": 3,
             },
         }
 
     import services.tools.read_console as read_console_mod
+
     monkeypatch.setattr(read_console_mod, "send_with_unity_instance", fake_send)
 
     resp = await read_console(
@@ -72,14 +93,27 @@ async def test_read_console_has_timestamps(monkeypatch):
             "success": True,
             "data": {
                 "entries": [
-                    {"sequenceId": 10, "timestamp": "2026-02-01T12:30:00Z", "type": "log", "message": "hello", "stackTrace": None},
-                    {"sequenceId": 11, "timestamp": "2026-02-01T12:30:01Z", "type": "log", "message": "world", "stackTrace": None},
+                    {
+                        "sequenceId": 10,
+                        "timestamp": "2026-02-01T12:30:00Z",
+                        "type": "log",
+                        "message": "hello",
+                        "stackTrace": None,
+                    },
+                    {
+                        "sequenceId": 11,
+                        "timestamp": "2026-02-01T12:30:01Z",
+                        "type": "log",
+                        "message": "world",
+                        "stackTrace": None,
+                    },
                 ],
                 "latestSequenceId": 11,
             },
         }
 
     import services.tools.read_console as read_console_mod
+
     monkeypatch.setattr(read_console_mod, "send_with_unity_instance", fake_send)
 
     resp = await read_console(ctx=DummyContext(), action="get", types=["log"], count=5)
@@ -117,9 +151,27 @@ async def test_read_console_since_sequence_id(monkeypatch):
                 "success": True,
                 "data": {
                     "entries": [
-                        {"sequenceId": 1, "timestamp": "2026-01-01T00:00:00Z", "type": "log", "message": "first", "stackTrace": None},
-                        {"sequenceId": 2, "timestamp": "2026-01-01T00:00:01Z", "type": "log", "message": "second", "stackTrace": None},
-                        {"sequenceId": 3, "timestamp": "2026-01-01T00:00:02Z", "type": "log", "message": "third", "stackTrace": None},
+                        {
+                            "sequenceId": 1,
+                            "timestamp": "2026-01-01T00:00:00Z",
+                            "type": "log",
+                            "message": "first",
+                            "stackTrace": None,
+                        },
+                        {
+                            "sequenceId": 2,
+                            "timestamp": "2026-01-01T00:00:01Z",
+                            "type": "log",
+                            "message": "second",
+                            "stackTrace": None,
+                        },
+                        {
+                            "sequenceId": 3,
+                            "timestamp": "2026-01-01T00:00:02Z",
+                            "type": "log",
+                            "message": "third",
+                            "stackTrace": None,
+                        },
                     ],
                     "latestSequenceId": 3,
                 },
@@ -129,23 +181,34 @@ async def test_read_console_since_sequence_id(monkeypatch):
                 "success": True,
                 "data": {
                     "entries": [
-                        {"sequenceId": 4, "timestamp": "2026-01-01T00:00:03Z", "type": "log", "message": "fourth", "stackTrace": None},
+                        {
+                            "sequenceId": 4,
+                            "timestamp": "2026-01-01T00:00:03Z",
+                            "type": "log",
+                            "message": "fourth",
+                            "stackTrace": None,
+                        },
                     ],
                     "latestSequenceId": 4,
                 },
             }
 
     import services.tools.read_console as read_console_mod
+
     monkeypatch.setattr(read_console_mod, "send_with_unity_instance", fake_send)
 
     # First call: get initial entries
-    result1 = await read_console(ctx=DummyContext(), action="get", types=["log"], count=10)
+    result1 = await read_console(
+        ctx=DummyContext(), action="get", types=["log"], count=10
+    )
     assert result1["success"] is True
     latest_id = result1["data"]["latestSequenceId"]
     assert latest_id == 3
 
     # Second call: poll for new entries since last known ID
-    result2 = await read_console(ctx=DummyContext(), action="get", types=["log"], since_sequence_id=latest_id)
+    result2 = await read_console(
+        ctx=DummyContext(), action="get", types=["log"], since_sequence_id=latest_id
+    )
     assert result2["success"] is True
 
     entries = result2["data"]["entries"]
@@ -180,6 +243,7 @@ async def test_read_console_count_only(monkeypatch):
         }
 
     import services.tools.read_console as read_console_mod
+
     monkeypatch.setattr(read_console_mod, "send_with_unity_instance", fake_send)
 
     resp = await read_console(ctx=DummyContext(), action="get", count_only=True)
@@ -213,9 +277,12 @@ async def test_read_console_empty_result(monkeypatch):
         }
 
     import services.tools.read_console as read_console_mod
+
     monkeypatch.setattr(read_console_mod, "send_with_unity_instance", fake_send)
 
-    resp = await read_console(ctx=DummyContext(), action="get", types=["error"], count=10)
+    resp = await read_console(
+        ctx=DummyContext(), action="get", types=["error"], count=10
+    )
     assert resp["success"] is True
     assert resp["data"]["entries"] == []
     assert resp["data"]["latestSequenceId"] == 0
@@ -235,13 +302,20 @@ async def test_read_console_since_timestamp(monkeypatch):
             "success": True,
             "data": {
                 "entries": [
-                    {"sequenceId": 50, "timestamp": "2026-02-01T14:00:00Z", "type": "error", "message": "late error", "stackTrace": None},
+                    {
+                        "sequenceId": 50,
+                        "timestamp": "2026-02-01T14:00:00Z",
+                        "type": "error",
+                        "message": "late error",
+                        "stackTrace": None,
+                    },
                 ],
                 "latestSequenceId": 50,
             },
         }
 
     import services.tools.read_console as read_console_mod
+
     monkeypatch.setattr(read_console_mod, "send_with_unity_instance", fake_send)
 
     resp = await read_console(
@@ -256,8 +330,8 @@ async def test_read_console_since_timestamp(monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_read_console_filter_text(monkeypatch):
-    """Test text filtering of console entries."""
+async def test_read_console_filter_regex(monkeypatch):
+    """Test regex filtering of console entries."""
     tools = setup_console_tools()
     read_console = tools["read_console"]
 
@@ -269,22 +343,29 @@ async def test_read_console_filter_text(monkeypatch):
             "success": True,
             "data": {
                 "entries": [
-                    {"sequenceId": 5, "timestamp": "2026-01-01T00:00:00Z", "type": "error", "message": "NullReferenceException", "stackTrace": None},
+                    {
+                        "sequenceId": 5,
+                        "timestamp": "2026-01-01T00:00:00Z",
+                        "type": "error",
+                        "message": "NullReferenceException",
+                        "stackTrace": None,
+                    },
                 ],
                 "latestSequenceId": 5,
             },
         }
 
     import services.tools.read_console as read_console_mod
+
     monkeypatch.setattr(read_console_mod, "send_with_unity_instance", fake_send)
 
     resp = await read_console(
         ctx=DummyContext(),
         action="get",
-        filter_text="NullReference",
+        filter_regex="NullReference",
     )
     assert resp["success"] is True
-    assert captured["params"]["filterText"] == "NullReference"
+    assert captured["params"]["filterRegex"] == "NullReference"
 
 
 @pytest.mark.asyncio
@@ -306,7 +387,13 @@ async def test_read_console_polling_workflow(monkeypatch):
                 "success": True,
                 "data": {
                     "entries": [
-                        {"sequenceId": i, "timestamp": f"2026-01-01T00:00:{i:02d}Z", "type": "log", "message": f"msg {i}", "stackTrace": None}
+                        {
+                            "sequenceId": i,
+                            "timestamp": f"2026-01-01T00:00:{i:02d}Z",
+                            "type": "log",
+                            "message": f"msg {i}",
+                            "stackTrace": None,
+                        }
                         for i in range(1, 4)
                     ],
                     "latestSequenceId": 3,
@@ -327,7 +414,13 @@ async def test_read_console_polling_workflow(monkeypatch):
                 "success": True,
                 "data": {
                     "entries": [
-                        {"sequenceId": 4, "timestamp": "2026-01-01T00:00:04Z", "type": "error", "message": "new error", "stackTrace": None},
+                        {
+                            "sequenceId": 4,
+                            "timestamp": "2026-01-01T00:00:04Z",
+                            "type": "error",
+                            "message": "new error",
+                            "stackTrace": None,
+                        },
                     ],
                     "latestSequenceId": 4,
                 },
@@ -335,6 +428,7 @@ async def test_read_console_polling_workflow(monkeypatch):
         return {"success": True, "data": {"entries": [], "latestSequenceId": since}}
 
     import services.tools.read_console as read_console_mod
+
     monkeypatch.setattr(read_console_mod, "send_with_unity_instance", fake_send)
 
     # Step 1: Initial read

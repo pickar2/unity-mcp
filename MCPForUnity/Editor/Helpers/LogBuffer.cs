@@ -86,16 +86,13 @@ namespace MCPForUnity.Editor.Helpers
             LogType[] types = null,
             long? sinceSequenceId = null,
             DateTime? sinceTimestamp = null,
-            string filterText = null,
             string filterRegex = null,
             int? count = null)
         {
-            // First get all matching entries to determine total
             var allResult = QueryPaged(
                 types: types,
                 sinceSequenceId: sinceSequenceId,
                 sinceTimestamp: sinceTimestamp,
-                filterText: filterText,
                 filterRegex: filterRegex,
                 pageSize: int.MaxValue,
                 cursor: 0
@@ -106,7 +103,6 @@ namespace MCPForUnity.Editor.Helpers
                 return allResult.Entries;
             }
 
-            // Return only the last N (most recent) entries
             int startIdx = allResult.TotalMatches - count.Value;
             return allResult.Entries.GetRange(startIdx, count.Value);
         }
@@ -115,7 +111,6 @@ namespace MCPForUnity.Editor.Helpers
             LogType[] types = null,
             long? sinceSequenceId = null,
             DateTime? sinceTimestamp = null,
-            string filterText = null,
             string filterRegex = null,
             int pageSize = 50,
             int cursor = 0)
@@ -141,7 +136,6 @@ namespace MCPForUnity.Editor.Helpers
                     };
                 }
 
-                // Calculate start index in ring buffer
                 int start = (_head - _count + _capacity) % _capacity;
 
                 for (int i = 0; i < _count; i++)
@@ -149,7 +143,6 @@ namespace MCPForUnity.Editor.Helpers
                     int idx = (start + i) % _capacity;
                     var entry = _buffer[idx];
 
-                    // Apply filters
                     if (types != null && types.Length > 0)
                     {
                         bool typeMatch = false;
@@ -171,12 +164,6 @@ namespace MCPForUnity.Editor.Helpers
                     if (sinceTimestamp.HasValue && entry.Timestamp <= sinceTimestamp.Value)
                         continue;
 
-                    if (!string.IsNullOrEmpty(filterText))
-                    {
-                        if (entry.Message.IndexOf(filterText, StringComparison.OrdinalIgnoreCase) < 0)
-                            continue;
-                    }
-
                     if (regex != null && !regex.IsMatch(entry.Message))
                         continue;
 
@@ -184,7 +171,6 @@ namespace MCPForUnity.Editor.Helpers
                 }
             }
 
-            // Apply pagination
             int totalMatches = allMatches.Count;
             int startIdx = Math.Min(cursor, totalMatches);
             int endIdx = Math.Min(startIdx + pageSize, totalMatches);
@@ -201,7 +187,7 @@ namespace MCPForUnity.Editor.Helpers
             };
         }
 
-        public BufferStats GetStats(string filterText = null, string filterRegex = null)
+        public BufferStats GetStats(string filterRegex = null)
         {
             Regex regex = null;
             if (!string.IsNullOrEmpty(filterRegex))
@@ -225,16 +211,9 @@ namespace MCPForUnity.Editor.Helpers
                     int idx = (start + i) % _capacity;
                     var entry = _buffer[idx];
 
-                    // Track sequence range
                     if (entry.SequenceId < oldest) oldest = entry.SequenceId;
                     if (entry.SequenceId > latest) latest = entry.SequenceId;
 
-                    // Apply text filters if provided
-                    if (!string.IsNullOrEmpty(filterText))
-                    {
-                        if (entry.Message.IndexOf(filterText, StringComparison.OrdinalIgnoreCase) < 0)
-                            continue;
-                    }
                     if (regex != null && !regex.IsMatch(entry.Message))
                         continue;
 

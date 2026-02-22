@@ -216,31 +216,29 @@ namespace MCPForUnity.Editor.Services
             LogType[] types = null,
             long? sinceSequenceId = null,
             DateTime? sinceTimestamp = null,
-            string filterText = null,
             string filterRegex = null,
             int? count = null)
         {
             Initialize();
-            return _buffer.Query(types, sinceSequenceId, sinceTimestamp, filterText, filterRegex, count);
+            return _buffer.Query(types, sinceSequenceId, sinceTimestamp, filterRegex, count);
         }
 
         public static LogBuffer.PagedResult QueryPaged(
             LogType[] types = null,
             long? sinceSequenceId = null,
             DateTime? sinceTimestamp = null,
-            string filterText = null,
             string filterRegex = null,
             int pageSize = 50,
             int cursor = 0)
         {
             Initialize();
-            return _buffer.QueryPaged(types, sinceSequenceId, sinceTimestamp, filterText, filterRegex, pageSize, cursor);
+            return _buffer.QueryPaged(types, sinceSequenceId, sinceTimestamp, filterRegex, pageSize, cursor);
         }
 
-        public static LogBuffer.BufferStats GetStats(string filterText = null, string filterRegex = null)
+        public static LogBuffer.BufferStats GetStats(string filterRegex = null)
         {
             Initialize();
-            return _buffer.GetStats(filterText, filterRegex);
+            return _buffer.GetStats(filterRegex);
         }
 
         public static long LatestSequenceId

@@ -6,7 +6,12 @@ from typing import Optional, Any
 
 from cli.utils.config import get_config
 from cli.utils.output import format_output, print_error, print_success, print_info
-from cli.utils.connection import run_command, run_list_custom_tools, handle_unity_errors, UnityConnectionError
+from cli.utils.connection import (
+    run_command,
+    run_list_custom_tools,
+    handle_unity_errors,
+    UnityConnectionError,
+)
 from cli.utils.suggestions import suggest_matches, format_suggestions
 from cli.utils.parsers import parse_json_dict_or_exit
 
@@ -52,10 +57,7 @@ def stop():
 
 @editor.command("step")
 @click.option(
-    "--frames", "-n",
-    default=1,
-    type=int,
-    help="Number of frames to step (default: 1)."
+    "--frames", "-n", default=1, type=int, help="Number of frames to step (default: 1)."
 )
 @handle_unity_errors
 def step(frames: int):
@@ -77,58 +79,45 @@ def step(frames: int):
 
 @editor.command("console")
 @click.option(
-    "--type", "-t",
+    "--type",
+    "-t",
     "log_types",
     multiple=True,
     type=click.Choice(["error", "warning", "log", "all"]),
     default=["error", "warning", "log"],
-    help="Message types to retrieve."
+    help="Message types to retrieve.",
 )
 @click.option(
-    "--count", "-n",
-    default=10,
-    type=int,
-    help="Number of messages to retrieve."
+    "--count", "-n", default=10, type=int, help="Number of messages to retrieve."
 )
 @click.option(
-    "--filter", "-f",
-    "filter_text",
-    default=None,
-    help="Filter messages containing this text."
-)
-@click.option(
-    "--regex", "-r",
+    "--regex",
+    "-r",
     "filter_regex",
     default=None,
-    help="Regex pattern filter (mutually exclusive with --filter)."
+    help="Regex pattern filter for messages.",
 )
-@click.option(
-    "--stacktrace", "-s",
-    is_flag=True,
-    help="Include stack traces."
-)
-@click.option(
-    "--clear",
-    is_flag=True,
-    help="Clear the console instead of reading."
-)
+@click.option("--stacktrace", "-s", is_flag=True, help="Include stack traces.")
+@click.option("--clear", is_flag=True, help="Clear the console instead of reading.")
 @handle_unity_errors
-def console(log_types: tuple, count: int, filter_text: Optional[str], filter_regex: Optional[str], stacktrace: bool, clear: bool):
+def console(
+    log_types: tuple,
+    count: int,
+    filter_regex: Optional[str],
+    stacktrace: bool,
+    clear: bool,
+):
     """Read or clear the Unity console.
 
     \b
     Examples:
         unity-mcp editor console
         unity-mcp editor console --type error --count 20
-        unity-mcp editor console --filter "NullReference" --stacktrace
+        unity-mcp editor console --regex "NullReference" --stacktrace
         unity-mcp editor console --regex "Error|Warning.*null"
         unity-mcp editor console --clear
     """
     config = get_config()
-
-    if filter_text and filter_regex:
-        print_error("Cannot use both --filter and --regex - choose one.")
-        return
 
     if clear:
         result = run_command("read_console", {"action": "clear"}, config)
@@ -144,8 +133,6 @@ def console(log_types: tuple, count: int, filter_text: Optional[str], filter_reg
         "include_stacktrace": stacktrace,
     }
 
-    if filter_text:
-        params["filter_text"] = filter_text
     if filter_regex:
         params["filter_regex"] = filter_regex
 
@@ -166,7 +153,8 @@ def add_tag(tag_name: str):
     """
     config = get_config()
     result = run_command(
-        "manage_editor", {"action": "add_tag", "tagName": tag_name}, config)
+        "manage_editor", {"action": "add_tag", "tagName": tag_name}, config
+    )
     click.echo(format_output(result, config.format))
     if result.get("success"):
         print_success(f"Added tag: {tag_name}")
@@ -184,7 +172,8 @@ def remove_tag(tag_name: str):
     """
     config = get_config()
     result = run_command(
-        "manage_editor", {"action": "remove_tag", "tagName": tag_name}, config)
+        "manage_editor", {"action": "remove_tag", "tagName": tag_name}, config
+    )
     click.echo(format_output(result, config.format))
     if result.get("success"):
         print_success(f"Removed tag: {tag_name}")
@@ -202,7 +191,8 @@ def add_layer(layer_name: str):
     """
     config = get_config()
     result = run_command(
-        "manage_editor", {"action": "add_layer", "layerName": layer_name}, config)
+        "manage_editor", {"action": "add_layer", "layerName": layer_name}, config
+    )
     click.echo(format_output(result, config.format))
     if result.get("success"):
         print_success(f"Added layer: {layer_name}")
@@ -220,7 +210,8 @@ def remove_layer(layer_name: str):
     """
     config = get_config()
     result = run_command(
-        "manage_editor", {"action": "remove_layer", "layerName": layer_name}, config)
+        "manage_editor", {"action": "remove_layer", "layerName": layer_name}, config
+    )
     click.echo(format_output(result, config.format))
     if result.get("success"):
         print_success(f"Removed layer: {layer_name}")
@@ -240,7 +231,8 @@ def set_tool(tool_name: str):
     """
     config = get_config()
     result = run_command(
-        "manage_editor", {"action": "set_active_tool", "toolName": tool_name}, config)
+        "manage_editor", {"action": "set_active_tool", "toolName": tool_name}, config
+    )
     click.echo(format_output(result, config.format))
     if result.get("success"):
         print_success(f"Set active tool: {tool_name}")
@@ -267,34 +259,33 @@ def execute_menu(menu_path: str):
 
 @editor.command("tests")
 @click.option(
-    "--mode", "-m",
+    "--mode",
+    "-m",
     type=click.Choice(["EditMode", "PlayMode"]),
     default="EditMode",
-    help="Test mode to run."
+    help="Test mode to run.",
 )
 @click.option(
-    "--async", "async_mode",
+    "--async",
+    "async_mode",
     is_flag=True,
-    help="Run asynchronously and return job ID for polling."
+    help="Run asynchronously and return job ID for polling.",
 )
 @click.option(
-    "--wait", "-w",
+    "--wait",
+    "-w",
     type=int,
     default=None,
-    help="Wait up to N seconds for completion (default: no wait)."
+    help="Wait up to N seconds for completion (default: no wait).",
 )
+@click.option("--details", is_flag=True, help="Include detailed results for all tests.")
 @click.option(
-    "--details",
-    is_flag=True,
-    help="Include detailed results for all tests."
-)
-@click.option(
-    "--failed-only",
-    is_flag=True,
-    help="Include details for failed/skipped tests only."
+    "--failed-only", is_flag=True, help="Include details for failed/skipped tests only."
 )
 @handle_unity_errors
-def run_tests(mode: str, async_mode: bool, wait: Optional[int], details: bool, failed_only: bool):
+def run_tests(
+    mode: str, async_mode: bool, wait: Optional[int], details: bool, failed_only: bool
+):
     """Run Unity tests.
 
     \b
@@ -330,20 +321,15 @@ def run_tests(mode: str, async_mode: bool, wait: Optional[int], details: bool, f
 @editor.command("poll-test")
 @click.argument("job_id")
 @click.option(
-    "--wait", "-w",
+    "--wait",
+    "-w",
     type=int,
     default=30,
-    help="Wait up to N seconds for completion (default: 30)."
+    help="Wait up to N seconds for completion (default: 30).",
 )
+@click.option("--details", is_flag=True, help="Include detailed results for all tests.")
 @click.option(
-    "--details",
-    is_flag=True,
-    help="Include detailed results for all tests."
-)
-@click.option(
-    "--failed-only",
-    is_flag=True,
-    help="Include details for failed/skipped tests only."
+    "--failed-only", is_flag=True, help="Include details for failed/skipped tests only."
 )
 @handle_unity_errors
 def poll_test(job_id: str, wait: int, details: bool, failed_only: bool):
@@ -389,24 +375,16 @@ def poll_test(job_id: str, wait: int, details: bool, failed_only: bool):
     "--mode",
     type=click.Choice(["if_dirty", "force"]),
     default="if_dirty",
-    help="Refresh mode."
+    help="Refresh mode.",
 )
 @click.option(
     "--scope",
     type=click.Choice(["assets", "scripts", "all"]),
     default="all",
-    help="What to refresh."
+    help="What to refresh.",
 )
-@click.option(
-    "--compile",
-    is_flag=True,
-    help="Request script compilation."
-)
-@click.option(
-    "--no-wait",
-    is_flag=True,
-    help="Don't wait for refresh to complete."
-)
+@click.option("--compile", is_flag=True, help="Request script compilation.")
+@click.option("--no-wait", is_flag=True, help="Don't wait for refresh to complete.")
 @handle_unity_errors
 def refresh(mode: str, scope: str, compile: bool, no_wait: bool):
     """Force Unity to refresh assets/scripts.
@@ -437,11 +415,7 @@ def refresh(mode: str, scope: str, compile: bool, no_wait: bool):
 
 @editor.command("custom-tool")
 @click.argument("tool_name")
-@click.option(
-    "--params", "-p",
-    default="{}",
-    help="Tool parameters as JSON."
-)
+@click.option("--params", "-p", default="{}", help="Tool parameters as JSON.")
 @handle_unity_errors
 def custom_tool(tool_name: str, params: str):
     """Execute a custom Unity tool.
@@ -457,10 +431,14 @@ def custom_tool(tool_name: str, params: str):
 
     params_dict = parse_json_dict_or_exit(params, "params")
 
-    result = run_command("execute_custom_tool", {
-        "tool_name": tool_name,
-        "parameters": params_dict,
-    }, config)
+    result = run_command(
+        "execute_custom_tool",
+        {
+            "tool_name": tool_name,
+            "parameters": params_dict,
+        },
+        config,
+    )
     click.echo(format_output(result, config.format))
     if result.get("success"):
         print_success(f"Executed custom tool: {tool_name}")
@@ -473,9 +451,15 @@ def custom_tool(tool_name: str, params: str):
                 if tools is None:
                     data = tools_result.get("data", {})
                     tools = data.get("tools") if isinstance(data, dict) else None
-                names = [
-                    t.get("name") for t in tools if isinstance(t, dict) and t.get("name")
-                ] if isinstance(tools, list) else []
+                names = (
+                    [
+                        t.get("name")
+                        for t in tools
+                        if isinstance(t, dict) and t.get("name")
+                    ]
+                    if isinstance(tools, list)
+                    else []
+                )
                 matches = suggest_matches(tool_name, names)
                 suggestion = format_suggestions(matches)
                 if suggestion:
@@ -487,29 +471,21 @@ def custom_tool(tool_name: str, params: str):
 
 @editor.command("buffer")
 @click.argument("target")
+@click.option("--start", "-s", default=0, type=int, help="Starting element index.")
+@click.option("--count", "-n", default=8, type=int, help="Number of elements to read.")
 @click.option(
-    "--start", "-s",
-    default=0,
-    type=int,
-    help="Starting element index."
-)
-@click.option(
-    "--count", "-n",
-    default=8,
-    type=int,
-    help="Number of elements to read."
-)
-@click.option(
-    "--format", "-f",
+    "--format",
+    "-f",
     "fmt",
     default=None,
-    help="Format string: 'name:type@offset,...'. Example: 'position:float3@0,velocity:float3@16'"
+    help="Format string: 'name:type@offset,...'. Example: 'position:float3@0,velocity:float3@16'",
 )
 @click.option(
-    "--list", "-l",
+    "--list",
+    "-l",
     "list_only",
     is_flag=True,
-    help="List matching buffers without reading data."
+    help="List matching buffers without reading data.",
 )
 @handle_unity_errors
 def buffer(target: str, start: int, count: int, fmt: Optional[str], list_only: bool):

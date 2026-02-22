@@ -4,6 +4,7 @@ Defines the read_console tool for accessing Unity Editor console messages.
 The C# side uses LogCaptureService which captures logs via Application.logMessageReceived.
 Each entry has a sequenceId and timestamp, enabling efficient polling via since_sequence_id.
 """
+
 from typing import Annotated, Any, Literal
 
 from fastmcp import Context
@@ -28,8 +29,7 @@ Options:
 - count: Max messages (default 100). Use page_size/cursor for pagination.
 - since_sequence_id: Only return entries after this sequence ID (for efficient polling)
 - since_timestamp: Only return entries after this ISO 8601 timestamp
-- filter_text: Substring filter (case-insensitive). Mutually exclusive with filter_regex.
-- filter_regex: Regex filter (case-insensitive). Mutually exclusive with filter_text.
+- filter_regex: Regex filter (case-insensitive). Example: 'DIAGNOSTIC|CONTACTS.*particle 1842'
 - page_size/cursor: Pagination support for large result sets
 - count_only: Return only counts by type (no entries)
 - include_stacktrace: Include stack traces in output
@@ -42,34 +42,57 @@ new entries since your last read - pass the latestSequenceId from a previous res
 )
 async def read_console(
     ctx: Context,
-    action: Annotated[Literal['get', 'clear'],
-                      "Get or clear the Unity Editor console. Defaults to 'get' if omitted."] | None = None,
-    types: Annotated[list[Literal['error', 'warning',
-                                  'log', 'all']] | str,
-                     "Message types to get (accepts list or JSON string)"] | None = None,
-    count: Annotated[int | str,
-                     "Max messages to return in non-paging mode (accepts int or string, e.g., 5 or '5'). Ignored when paging with page_size/cursor."] | None = None,
-    since_sequence_id: Annotated[int | str,
-                                 "Only return entries with sequenceId greater than this value. Use latestSequenceId from a previous response for efficient polling."] | None = None,
-    after_sequence_id: Annotated[int | str,
-                                 "Alias for since_sequence_id."] | None = None,
-    since_timestamp: Annotated[str,
-                               "Get messages after this timestamp (ISO 8601)"] | None = None,
-    filter_text: Annotated[str, "Text filter for messages (case-insensitive substring match). Mutually exclusive with filter_regex."] | None = None,
-    filter_regex: Annotated[str, "Regex pattern filter for messages (case-insensitive). Mutually exclusive with filter_text. Example: 'DIAGNOSTIC|CONTACTS.*particle 1842'"] | None = None,
-    page_size: Annotated[int | str,
-                         "Page size for paginated console reads. Defaults to 50 when omitted."] | None = None,
-    cursor: Annotated[int | str,
-                      "Opaque cursor for paging (0-based offset). Defaults to 0."] | None = None,
-    count_only: Annotated[bool | str,
-                          "If true, return only entry counts by type instead of full entries."] | None = None,
-    include_stacktrace: Annotated[bool | str,
-                                  "Include stack traces in output (accepts true/false or 'true'/'false')"] | None = None,
+    action: Annotated[
+        Literal["get", "clear"],
+        "Get or clear the Unity Editor console. Defaults to 'get' if omitted.",
+    ]
+    | None = None,
+    types: Annotated[
+        list[Literal["error", "warning", "log", "all"]] | str,
+        "Message types to get (accepts list or JSON string)",
+    ]
+    | None = None,
+    count: Annotated[
+        int | str,
+        "Max messages to return in non-paging mode (accepts int or string, e.g., 5 or '5'). Ignored when paging with page_size/cursor.",
+    ]
+    | None = None,
+    since_sequence_id: Annotated[
+        int | str,
+        "Only return entries with sequenceId greater than this value. Use latestSequenceId from a previous response for efficient polling.",
+    ]
+    | None = None,
+    after_sequence_id: Annotated[int | str, "Alias for since_sequence_id."]
+    | None = None,
+    since_timestamp: Annotated[str, "Get messages after this timestamp (ISO 8601)"]
+    | None = None,
+    filter_regex: Annotated[
+        str,
+        "Regex pattern filter for messages (case-insensitive). Example: 'DIAGNOSTIC|CONTACTS.*particle 1842'",
+    ]
+    | None = None,
+    page_size: Annotated[
+        int | str, "Page size for paginated console reads. Defaults to 50 when omitted."
+    ]
+    | None = None,
+    cursor: Annotated[
+        int | str, "Opaque cursor for paging (0-based offset). Defaults to 0."
+    ]
+    | None = None,
+    count_only: Annotated[
+        bool | str, "If true, return only entry counts by type instead of full entries."
+    ]
+    | None = None,
+    include_stacktrace: Annotated[
+        bool | str,
+        "Include stack traces in output (accepts true/false or 'true'/'false')",
+    ]
+    | None = None,
 ) -> dict[str, Any]:
     unity_instance = get_unity_instance_from_context(ctx)
 
     # Set defaults
-    action = action if action is not None else 'get'
+    action = action if action is not None else "get"
 
     # Parse types if it's a JSON string (handles client compatibility issue #561)
     if isinstance(types, str):
@@ -80,8 +103,8 @@ async def read_console(
             "success": False,
             "message": (
                 f"types must be a list, got {type(types).__name__}. "
-                "If passing as JSON string, use format: '[\"error\", \"warning\"]'"
-            )
+                'If passing as JSON string, use format: \'["error", "warning"]\''
+            ),
         }
     if types is not None:
         allowed_types = {"error", "warning", "log", "all"}
@@ -90,7 +113,7 @@ async def read_console(
             if not isinstance(entry, str):
                 return {
                     "success": False,
-                    "message": f"types entries must be strings, got {type(entry).__name__}"
+                    "message": f"types entries must be strings, got {type(entry).__name__}",
                 }
             normalized = entry.strip().lower()
             if normalized not in allowed_types:
@@ -99,12 +122,12 @@ async def read_console(
                     "message": (
                         f"invalid types entry '{entry}'. "
                         f"Allowed values: {sorted(allowed_types)}"
-                    )
+                    ),
                 }
             normalized_types.append(normalized)
         types = normalized_types
     else:
-        types = ['error', 'warning', 'log']
+        types = ["error", "warning", "log"]
 
     # Coerce booleans defensively (strings like 'true'/'false')
     include_stacktrace = coerce_bool(include_stacktrace, default=False)
@@ -117,13 +140,6 @@ async def read_console(
     # Normalize action if it's a string
     if isinstance(action, str):
         action = action.lower()
-
-    # Validate mutual exclusivity of filter params
-    if filter_text and filter_regex:
-        return {
-            "success": False,
-            "message": "Cannot use both filter_text and filter_regex - choose one."
-        }
 
     # Coerce count defensively (string/float -> int).
     if isinstance(count, str) and count.strip().lower() in ("all", "*"):
@@ -142,7 +158,6 @@ async def read_console(
         "count": count,
         "sinceSequenceId": coerced_since_seq,
         "sinceTimestamp": since_timestamp,
-        "filterText": filter_text,
         "filterRegex": filter_regex,
         "pageSize": coerced_page_size,
         "cursor": coerced_cursor,
@@ -152,5 +167,7 @@ async def read_console(
     params_dict = {k: v for k, v in params_dict.items() if v is not None}
 
     # Use centralized retry helper with instance routing
-    resp = await send_with_unity_instance(async_send_command_with_retry, unity_instance, "read_console", params_dict)
+    resp = await send_with_unity_instance(
+        async_send_command_with_retry, unity_instance, "read_console", params_dict
+    )
     return resp if isinstance(resp, dict) else {"success": False, "message": str(resp)}

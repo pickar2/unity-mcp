@@ -84,7 +84,6 @@ namespace MCPForUnity.Editor.Tools
 
         private static object GetConsoleEntries(ToolParams p)
         {
-            // Parse parameters
             var typesToken = p.GetRaw("types") as JArray;
             var types = typesToken?.Select(t => t.ToString().ToLower()).ToList()
                 ?? new List<string> { "error", "warning", "log" };
@@ -92,20 +91,12 @@ namespace MCPForUnity.Editor.Tools
             int? count = p.GetInt("count");
             int? pageSize = p.GetInt("pageSize");
             int? cursor = p.GetInt("cursor");
-            string filterText = p.Get("filterText");
             string filterRegexStr = p.Get("filterRegex");
             long? sinceSequenceId = p.GetLong("sinceSequenceId");
             string sinceTimestampStr = p.Get("sinceTimestamp");
             bool countOnly = p.GetBool("countOnly", false);
             bool includeStacktrace = p.GetBool("includeStacktrace", false);
 
-            // Validate mutual exclusivity of filterText and filterRegex
-            if (!string.IsNullOrEmpty(filterText) && !string.IsNullOrEmpty(filterRegexStr))
-            {
-                return new ErrorResponse("Cannot use both filterText and filterRegex - choose one.");
-            }
-
-            // Validate regex if provided
             if (!string.IsNullOrEmpty(filterRegexStr))
             {
                 try
@@ -118,13 +109,11 @@ namespace MCPForUnity.Editor.Tools
                 }
             }
 
-            // Expand 'all' type
             if (types.Contains("all"))
             {
                 types = new List<string> { "error", "warning", "log" };
             }
 
-            // Parse timestamp if provided
             DateTime? sinceTimestamp = null;
             if (!string.IsNullOrEmpty(sinceTimestampStr))
             {
@@ -134,13 +123,11 @@ namespace MCPForUnity.Editor.Tools
                 }
             }
 
-            // Convert string types to LogType array
             var logTypes = ConvertToLogTypes(types);
 
-            // Handle countOnly mode
             if (countOnly)
             {
-                var stats = LogCaptureService.GetStats(filterText, filterRegexStr);
+                var stats = LogCaptureService.GetStats(filterRegexStr);
                 return new SuccessResponse("Console entry counts.", new
                 {
                     error = stats.ErrorCount,
@@ -151,7 +138,6 @@ namespace MCPForUnity.Editor.Tools
                 });
             }
 
-            // Determine if using pagination
             bool usePaging = pageSize.HasValue || cursor.HasValue;
 
             if (usePaging)
@@ -163,7 +149,6 @@ namespace MCPForUnity.Editor.Tools
                     types: logTypes,
                     sinceSequenceId: sinceSequenceId,
                     sinceTimestamp: sinceTimestamp,
-                    filterText: filterText,
                     filterRegex: filterRegexStr,
                     pageSize: resolvedPageSize,
                     cursor: resolvedCursor
@@ -188,7 +173,6 @@ namespace MCPForUnity.Editor.Tools
                     types: logTypes,
                     sinceSequenceId: sinceSequenceId,
                     sinceTimestamp: sinceTimestamp,
-                    filterText: filterText,
                     filterRegex: filterRegexStr,
                     count: count
                 );
