@@ -32,7 +32,9 @@ pass_context = click.make_pass_decorator(Context, ensure=True)
 _ORIGINAL_RESOLVE_COMMAND = click.Group.resolve_command
 
 
-def _resolve_command_with_suggestions(self: click.Group, ctx: click.Context, args: list[str]):
+def _resolve_command_with_suggestions(
+    self: click.Group, ctx: click.Context, args: list[str]
+):
     try:
         return _ORIGINAL_RESOLVE_COMMAND(self, ctx, args)
     except click.exceptions.NoSuchCommand as e:
@@ -61,45 +63,54 @@ click.Group.resolve_command = _resolve_command_with_suggestions  # type: ignore[
 @click.group()
 @click.version_option(version=__version__, prog_name="unity-mcp")
 @click.option(
-    "--host", "-h",
+    "--host",
+    "-h",
     default="127.0.0.1",
     envvar="UNITY_MCP_HOST",
-    help="MCP server host address."
+    help="MCP server host address.",
 )
 @click.option(
-    "--port", "-p",
+    "--port",
+    "-p",
     default=8080,
     type=int,
     envvar="UNITY_MCP_HTTP_PORT",
-    help="MCP server port."
+    help="MCP server port.",
 )
 @click.option(
-    "--timeout", "-t",
+    "--timeout",
+    "-t",
     default=30,
     type=int,
     envvar="UNITY_MCP_TIMEOUT",
-    help="Command timeout in seconds."
+    help="Command timeout in seconds.",
 )
 @click.option(
-    "--format", "-f",
+    "--format",
+    "-f",
     type=click.Choice(["text", "json", "table"]),
     default="text",
     envvar="UNITY_MCP_FORMAT",
-    help="Output format."
+    help="Output format.",
 )
 @click.option(
-    "--instance", "-i",
+    "--instance",
+    "-i",
     default=None,
     envvar="UNITY_MCP_INSTANCE",
-    help="Target Unity instance (hash or Name@hash)."
+    help="Target Unity instance (hash or Name@hash).",
 )
-@click.option(
-    "--verbose", "-v",
-    is_flag=True,
-    help="Enable verbose output."
-)
+@click.option("--verbose", "-v", is_flag=True, help="Enable verbose output.")
 @pass_context
-def cli(ctx: Context, host: str, port: int, timeout: int, format: str, instance: Optional[str], verbose: bool):
+def cli(
+    ctx: Context,
+    host: str,
+    port: int,
+    timeout: int,
+    format: str,
+    instance: Optional[str],
+    verbose: bool,
+):
     """Unity MCP Command Line Interface.
 
     Control Unity Editor directly from the command line using the Model Context Protocol.
@@ -144,14 +155,12 @@ def status(ctx: Context):
     click.echo(f"Checking connection to {config.host}:{config.port}...")
 
     if run_check_connection(config):
-        print_success(
-            f"Connected to Unity MCP server at {config.host}:{config.port}")
+        print_success(f"Connected to Unity MCP server at {config.host}:{config.port}")
 
         # Try to get Unity instances
         try:
             result = run_list_instances(config)
-            instances = result.get("instances", []) if isinstance(
-                result, dict) else []
+            instances = result.get("instances", []) if isinstance(result, dict) else []
             if instances:
                 click.echo("\nConnected Unity instances:")
                 for inst in instances:
@@ -165,7 +174,8 @@ def status(ctx: Context):
             print_info(f"Could not retrieve Unity instances: {e}")
     else:
         print_error(
-            f"Cannot connect to Unity MCP server at {config.host}:{config.port}")
+            f"Cannot connect to Unity MCP server at {config.host}:{config.port}"
+        )
         sys.exit(1)
 
 
@@ -196,6 +206,7 @@ def raw_command(ctx: Context, command_type: str, params: str):
         unity-mcp raw read_console '{"count": 10}'
     """
     import json
+
     config = ctx.config or get_config()
 
     try:
@@ -216,27 +227,22 @@ def raw_command(ctx: Context, command_type: str, params: str):
 # These will be implemented in subsequent TODOs
 def register_commands():
     """Register all command groups."""
+
     def register_optional_command(module_name: str, command_name: str) -> None:
         try:
             module = import_module(module_name)
         except ModuleNotFoundError as e:
             if e.name == module_name:
                 return
-            print_error(
-                f"Failed to load command module '{module_name}': {e}"
-            )
+            print_error(f"Failed to load command module '{module_name}': {e}")
             return
         except Exception as e:
-            print_error(
-                f"Failed to load command module '{module_name}': {e}"
-            )
+            print_error(f"Failed to load command module '{module_name}': {e}")
             return
 
         command = getattr(module, command_name, None)
         if command is None:
-            print_error(
-                f"Command '{command_name}' not found in '{module_name}'"
-            )
+            print_error(f"Command '{command_name}' not found in '{module_name}'")
             return
 
         cli.add_command(command)
@@ -245,6 +251,7 @@ def register_commands():
         ("cli.commands.tool", "tool"),
         ("cli.commands.tool", "custom_tool"),
         ("cli.commands.gameobject", "gameobject"),
+        ("cli.commands.scene_obj", "scene_obj"),
         ("cli.commands.component", "component"),
         ("cli.commands.scene", "scene"),
         ("cli.commands.asset", "asset"),
