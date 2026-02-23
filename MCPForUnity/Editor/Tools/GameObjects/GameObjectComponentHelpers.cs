@@ -154,13 +154,13 @@ namespace MCPForUnity.Editor.Tools.GameObjects
                         var msg = suggestions.Any()
                             ? $"Property '{propName}' not found. Did you mean: {string.Join(", ", suggestions)}? Available: [{string.Join(", ", availableProperties)}]"
                             : $"Property '{propName}' not found. Available: [{string.Join(", ", availableProperties)}]";
-                        McpLog.Warn($"[ManageGameObject] {msg}");
+                        McpLog.Warn($"[SceneObject] {msg}");
                         failures.Add(msg);
                     }
                 }
                 catch (Exception e)
                 {
-                    McpLog.Error($"[ManageGameObject] Error setting property '{propName}' on '{componentTypeName}': {e.Message}");
+                    McpLog.Error($"[SceneObject] Error setting property '{propName}' on '{componentTypeName}': {e.Message}");
                     failures.Add($"Error setting '{propName}': {e.Message}");
                 }
             }

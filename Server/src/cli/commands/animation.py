@@ -1,12 +1,11 @@
 """Animation CLI commands - placeholder for future implementation."""
 
 import click
-from typing import Optional, Any
+from typing import Any
 
 from cli.utils.config import get_config
 from cli.utils.output import format_output, print_error, print_info
 from cli.utils.connection import run_command, handle_unity_errors
-from cli.utils.constants import SEARCH_METHOD_CHOICE_BASIC
 
 
 @click.group()
@@ -19,14 +18,8 @@ def animation():
 @click.argument("target")
 @click.argument("state_name")
 @click.option("--layer", "-l", default=0, type=int, help="Animator layer(TODO).")
-@click.option(
-    "--search-method",
-    type=SEARCH_METHOD_CHOICE_BASIC,
-    default=None,
-    help="How to find the target.",
-)
 @handle_unity_errors
-def play(target: str, state_name: str, layer: int, search_method: Optional[str]):
+def play(target: str, state_name: str, layer: int):
     """Play an animation state on a target's Animator.
 
     \b
@@ -42,9 +35,6 @@ def play(target: str, state_name: str, layer: int, search_method: Optional[str])
         "component": "Animator",
         "properties": {"Play": state_name, "layer": layer},
     }
-
-    if search_method:
-        params["search_method"] = search_method
 
     result = run_command("scene_object", params, config)
     click.echo(format_output(result, config.format))

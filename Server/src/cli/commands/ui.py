@@ -95,7 +95,7 @@ def create_canvas(name: str, render_mode: str):
 @click.option("--parent", "-p", required=True, help="Parent Canvas or UI element.")
 @click.option("--text", "-t", default="New Text", help="Initial text content.")
 @click.option(
-    "--position", nargs=2, type=float, default=(0, 0), help="Anchored position X Y."
+    "--position", nargs=3, type=float, default=(0, 0, 0), help="Position X Y Z."
 )
 @handle_unity_errors
 def create_text(name: str, parent: str, text: str, position: tuple):

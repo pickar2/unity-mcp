@@ -34,7 +34,7 @@ def batch_run(file: str, parallel: bool, fail_fast: bool):
         [
             {"tool": "scene_object", "params": {"action": "create", "name": "Cube1"}},
             {"tool": "scene_object", "params": {"action": "create", "name": "Cube2"}},
-            {"tool": "scene_object", "params": {"action": "add_component", "target": "Cube1", "componentType": "Rigidbody"}}
+            {"tool": "scene_object", "params": {"action": "set", "target": "Cube1", "add_components": ["Rigidbody"]}}
         ]
 
     \\b
@@ -100,8 +100,8 @@ def batch_inline(commands_json: str, parallel: bool, fail_fast: bool):
         unity-mcp batch inline '[{"tool": "manage_scene", "params": {"action": "get_active"}}]'
 
         unity-mcp batch inline '[
-            {"tool": "scene_object", "params": {"action": "create", "name": "A", "primitiveType": "Cube"}},
-            {"tool": "scene_object", "params": {"action": "create", "name": "B", "primitiveType": "Sphere"}}
+            {"tool": "scene_object", "params": {"action": "create", "name": "A", "primitive": "Cube"}},
+            {"tool": "scene_object", "params": {"action": "create", "name": "B", "primitive": "Sphere"}}
         ]'
     """
     config = get_config()
@@ -139,22 +139,22 @@ def batch_template(output: Optional[str]):
             "params": {
                 "action": "create",
                 "name": "BatchCube",
-                "primitiveType": "Cube",
+                "primitive": "Cube",
                 "position": [0, 1, 0],
             },
         },
         {
             "tool": "scene_object",
             "params": {
-                "action": "add_component",
+                "action": "set",
                 "target": "BatchCube",
-                "componentType": "Rigidbody",
+                "add_components": ["Rigidbody"],
             },
         },
         {
             "tool": "scene_object",
             "params": {
-                "action": "modify",
+                "action": "set",
                 "target": "BatchCube",
                 "position": [0, 5, 0],
             },

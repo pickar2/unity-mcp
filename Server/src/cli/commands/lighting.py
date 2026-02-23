@@ -84,14 +84,20 @@ def create(
         click.echo(format_output(add_result, config.format))
         return
 
-    # Step 3: Set light type
+    # Step 3: Set light type (LightType enum: Spot=0, Directional=1, Point=2, Area=3)
+    light_type_value = {
+        "Spot": 0,
+        "Directional": 1,
+        "Point": 2,
+        "Area": 3,
+    }.get(light_type, 2)
     type_result = run_command(
         "scene_object",
         {
             "action": "set",
             "target": name,
             "component": "Light",
-            "properties": {"type": light_type},
+            "properties": {"type": light_type_value},
         },
         config,
     )

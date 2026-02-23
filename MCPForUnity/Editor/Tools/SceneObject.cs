@@ -304,7 +304,7 @@ namespace MCPForUnity.Editor.Tools
             string batchTag = p.Get("tag");
             string batchParent = p.Get("parent");
 
-            bool isBatch = !string.IsNullOrEmpty(targetRegex) || !string.IsNullOrEmpty(batchTag) || !string.IsNullOrEmpty(batchParent);
+            bool isBatch = targetToken == null && (!string.IsNullOrEmpty(targetRegex) || !string.IsNullOrEmpty(batchTag) || !string.IsNullOrEmpty(batchParent));
 
             if (isBatch)
             {
@@ -351,14 +351,19 @@ namespace MCPForUnity.Editor.Tools
                 return new SuccessResponse("No objects matched the criteria.", new { affected = new List<object>(), count = 0 });
 
             var affected = new List<object>();
+            var errors = new List<object>();
             foreach (var go in targetList)
             {
-                ApplySetProperties(go, @params, p);
+                var setResult = ApplySetProperties(go, @params, p);
                 EditorUtility.SetDirty(go);
                 MarkOwningSceneDirty(go);
-                affected.Add(new { path = GetGameObjectPath(go), instance_id = go.GetInstanceID() });
+                affected.Add(new { path = GetGameObjectPath(go), instance_id = go.GetInstanceID(), changes = setResult.Changes });
+                if (setResult.Error is ErrorResponse err)
+                    errors.Add(new { path = GetGameObjectPath(go), error = err.Error });
             }
 
+            if (errors.Count > 0)
+                return new SuccessResponse($"Updated {affected.Count} objects with {errors.Count} error(s).", new { affected, count = affected.Count, errors });
             return new SuccessResponse($"Updated {affected.Count} objects.", new { affected, count = affected.Count });
         }
 
@@ -475,6 +480,7 @@ namespace MCPForUnity.Editor.Tools
 
                 try
                 {
+                    Undo.RecordObject(go, "Set Tag");
                     go.tag = tagToSet;
                     result.Changes.Add("tag");
                 }
@@ -505,6 +511,7 @@ namespace MCPForUnity.Editor.Tools
 
                 if (layerId >= 0 && layerId <= 31 && go.layer != layerId)
                 {
+                    Undo.RecordObject(go, "Set Layer");
                     go.layer = layerId;
                     result.Changes.Add("layer");
                 }
@@ -633,10 +640,12 @@ namespace MCPForUnity.Editor.Tools
             if (!string.IsNullOrEmpty(parentPath))
             {
                 var parent = ResolveTarget(parentPath);
-                if (parent != null)
+                if (parent == null)
                 {
-                    newGo.transform.SetParent(parent.transform, false);
+                    Undo.DestroyObjectImmediate(newGo);
+                    return new ErrorResponse($"Parent '{parentPath}' not found.");
                 }
+                newGo.transform.SetParent(parent.transform, false);
             }
 
             var transform = newGo.transform;
@@ -663,9 +672,18 @@ namespace MCPForUnity.Editor.Tools
                 if (tag != "Untagged" && !InternalEditorUtility.tags.Contains(tag))
                 {
                     try { InternalEditorUtility.AddTag(tag); }
-                    catch { }
+                    catch (Exception ex)
+                    {
+                        Undo.DestroyObjectImmediate(newGo);
+                        return new ErrorResponse($"Failed to create tag '{tag}': {ex.Message}");
+                    }
                 }
-                try { newGo.tag = tag; } catch { }
+                try { newGo.tag = tag; }
+                catch (Exception ex)
+                {
+                    Undo.DestroyObjectImmediate(newGo);
+                    return new ErrorResponse($"Failed to set tag '{tag}': {ex.Message}");
+                }
             }
 
             var layerToken = @params["layer"];
@@ -674,8 +692,12 @@ namespace MCPForUnity.Editor.Tools
                 int layerId = layerToken.Type == JTokenType.Integer
                     ? layerToken.Value<int>()
                     : LayerMask.NameToLayer(layerToken.ToString());
-                if (layerId >= 0 && layerId <= 31)
-                    newGo.layer = layerId;
+                if (layerId < 0 || layerId > 31)
+                {
+                    Undo.DestroyObjectImmediate(newGo);
+                    return new ErrorResponse($"Invalid layer: '{layerToken}'. Use a valid layer name or number 0-31.");
+                }
+                newGo.layer = layerId;
             }
 
             // Components: accept strings or {typeName, properties} objects
@@ -699,7 +721,12 @@ namespace MCPForUnity.Editor.Tools
 
                     if (!string.IsNullOrEmpty(typeName))
                     {
-                        GameObjectComponentHelpers.AddComponentInternal(newGo, typeName, compProps);
+                        var addResult = GameObjectComponentHelpers.AddComponentInternal(newGo, typeName, compProps);
+                        if (addResult != null)
+                        {
+                            Undo.DestroyObjectImmediate(newGo);
+                            return addResult;
+                        }
                     }
                 }
             }
@@ -740,7 +767,7 @@ namespace MCPForUnity.Editor.Tools
             string batchTag = p.Get("tag");
             string batchParent = p.Get("parent");
 
-            bool isBatch = !string.IsNullOrEmpty(targetRegex) || !string.IsNullOrEmpty(batchTag) || !string.IsNullOrEmpty(batchParent);
+            bool isBatch = targetToken == null && (!string.IsNullOrEmpty(targetRegex) || !string.IsNullOrEmpty(batchTag) || !string.IsNullOrEmpty(batchParent));
 
             if (isBatch)
             {
@@ -782,9 +809,13 @@ namespace MCPForUnity.Editor.Tools
             if (targets.Count == 0)
                 return new SuccessResponse("No objects matched the criteria.", new { deleted = new List<object>(), count = 0 });
 
+            // Sort children before parents to avoid accessing destroyed objects
+            targets.Sort((a, b) => GetGameObjectPath(b).Count(c => c == '/') - GetGameObjectPath(a).Count(c => c == '/'));
+
             var deleted = new List<object>();
             foreach (var go in targets)
             {
+                if (go == null) continue;
                 deleted.Add(new { path = GetGameObjectPath(go), instance_id = go.GetInstanceID() });
                 Undo.DestroyObjectImmediate(go);
             }
@@ -821,7 +852,7 @@ namespace MCPForUnity.Editor.Tools
 
             if (position.HasValue)
             {
-                duplicatedGo.transform.position = position.Value;
+                duplicatedGo.transform.localPosition = position.Value;
             }
             else if (offset.HasValue)
             {
@@ -895,7 +926,11 @@ namespace MCPForUnity.Editor.Tools
             }
             else if (!string.IsNullOrEmpty(direction))
             {
-                Vector3 dirVector = GetDirectionVector(direction.ToLowerInvariant(), refGo.transform, useWorldSpace);
+                string dirLower = direction.ToLowerInvariant();
+                var validDirections = new HashSet<string> { "right", "left", "up", "down", "forward", "front", "back", "backward", "behind" };
+                if (!validDirections.Contains(dirLower))
+                    return new ErrorResponse($"Invalid direction: '{direction}'. Valid: right, left, up, down, forward, front, back, backward, behind.");
+                Vector3 dirVector = GetDirectionVector(dirLower, refGo.transform, useWorldSpace);
                 newPosition = refGo.transform.position + dirVector * distance;
             }
             else
@@ -1019,7 +1054,13 @@ namespace MCPForUnity.Editor.Tools
             if (target.Contains("/"))
                 return FindByPath(target);
 
-            return GameObject.Find(target);
+            // Search all objects including inactive (GameObject.Find only finds active)
+            foreach (var go in GameObjectLookup.GetAllSceneObjects(true))
+            {
+                if (go.name == target)
+                    return go;
+            }
+            return null;
         }
 
         private static GameObject FindByPath(string path)

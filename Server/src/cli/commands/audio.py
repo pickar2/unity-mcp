@@ -7,7 +7,6 @@ from typing import Optional, Any
 from cli.utils.config import get_config
 from cli.utils.output import format_output, print_error, print_info
 from cli.utils.connection import run_command, handle_unity_errors
-from cli.utils.constants import SEARCH_METHOD_CHOICE_BASIC
 
 
 @click.group()
@@ -19,14 +18,8 @@ def audio():
 @audio.command("play")
 @click.argument("target")
 @click.option("--clip", "-c", default=None, help="Audio clip path to play.")
-@click.option(
-    "--search-method",
-    type=SEARCH_METHOD_CHOICE_BASIC,
-    default=None,
-    help="How to find the target.",
-)
 @handle_unity_errors
-def play(target: str, clip: Optional[str], search_method: Optional[str]):
+def play(target: str, clip: Optional[str]):
     """Play audio on a target's AudioSource.
 
     \b
@@ -47,23 +40,14 @@ def play(target: str, clip: Optional[str], search_method: Optional[str]):
         "properties": properties,
     }
 
-    if search_method:
-        params["search_method"] = search_method
-
     result = run_command("scene_object", params, config)
     click.echo(format_output(result, config.format))
 
 
 @audio.command("stop")
 @click.argument("target")
-@click.option(
-    "--search-method",
-    type=SEARCH_METHOD_CHOICE_BASIC,
-    default=None,
-    help="How to find the target.",
-)
 @handle_unity_errors
-def stop(target: str, search_method: Optional[str]):
+def stop(target: str):
     """Stop audio on a target's AudioSource.
 
     \b
@@ -79,9 +63,6 @@ def stop(target: str, search_method: Optional[str]):
         "properties": {"Stop": True},
     }
 
-    if search_method:
-        params["search_method"] = search_method
-
     result = run_command("scene_object", params, config)
     click.echo(format_output(result, config.format))
 
@@ -89,14 +70,8 @@ def stop(target: str, search_method: Optional[str]):
 @audio.command("volume")
 @click.argument("target")
 @click.argument("level", type=float)
-@click.option(
-    "--search-method",
-    type=SEARCH_METHOD_CHOICE_BASIC,
-    default=None,
-    help="How to find the target.",
-)
 @handle_unity_errors
-def volume(target: str, level: float, search_method: Optional[str]):
+def volume(target: str, level: float):
     """Set audio volume on a target's AudioSource.
 
     \b
@@ -111,9 +86,6 @@ def volume(target: str, level: float, search_method: Optional[str]):
         "component": "AudioSource",
         "properties": {"volume": level},
     }
-
-    if search_method:
-        params["search_method"] = search_method
 
     result = run_command("scene_object", params, config)
     click.echo(format_output(result, config.format))
