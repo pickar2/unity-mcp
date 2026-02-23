@@ -517,6 +517,18 @@ namespace MCPForUnity.Editor.Tools
                 }
             }
 
+            // Static flag
+            if (@params["is_static"] != null)
+            {
+                bool isStatic = p.GetBool("is_static", go.isStatic);
+                if (go.isStatic != isStatic)
+                {
+                    Undo.RecordObject(go, "Set Static");
+                    go.isStatic = isStatic;
+                    result.Changes.Add("is_static");
+                }
+            }
+
             // Add components
             var addComponentsToken = p.GetRaw("add_components");
             if (addComponentsToken is JArray addArray)

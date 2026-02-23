@@ -113,6 +113,9 @@ async def scene_object(
         str | None, "New name for set/rename/duplicate, or object name for create."
     ] = None,
     active: Annotated[bool | None, "Set active state."] = None,
+    is_static: Annotated[
+        bool | None, "Set static flag (enables static batching, lightmapping, etc.)."
+    ] = None,
     position: Annotated[
         list[float] | dict | None, "Local position [x,y,z] or {x,y,z}."
     ] = None,
@@ -175,6 +178,8 @@ async def scene_object(
         params["name"] = name
     if active is not None:
         params["active"] = active
+    if is_static is not None:
+        params["is_static"] = is_static
     if position is not None:
         params["position"] = position
     if rotation is not None:
