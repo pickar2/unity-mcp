@@ -447,42 +447,8 @@ namespace MCPForUnity.Editor.Tools
 
         private static void EnsureGameView()
         {
-            try
-            {
-                // Repaint Game View if it exists, but DON'T steal focus.
-                // Stealing focus causes Unity to detect external code changes and recompile,
-                // which disrupts the user's workflow when developing with AI assistants.
-                try
-                {
-                    var gameViewType = Type.GetType("UnityEditor.GameView,UnityEditor");
-                    if (gameViewType != null)
-                    {
-                        // Use GetWindow with utility:false, focus:false to avoid stealing focus
-                        var window = EditorWindow.GetWindow(gameViewType, false, null, false);
-                        window?.Repaint();
-                    }
-                }
-                catch (Exception e)
-                {
-                    try { McpLog.Debug($"[ManageScene] screenshot: failed to repaint Game View: {e.Message}"); } catch { }
-                }
-
-                try { SceneView.RepaintAll(); }
-                catch (Exception e)
-                {
-                    try { McpLog.Debug($"[ManageScene] screenshot: failed to repaint Scene View: {e.Message}"); } catch { }
-                }
-
-                try { EditorApplication.QueuePlayerLoopUpdate(); }
-                catch (Exception e)
-                {
-                    try { McpLog.Debug($"[ManageScene] screenshot: failed to queue player loop update: {e.Message}"); } catch { }
-                }
-            }
-            catch (Exception e)
-            {
-                try { McpLog.Debug($"[ManageScene] screenshot: EnsureGameView failed: {e.Message}"); } catch { }
-            }
+            SceneView.RepaintAll();
+            EditorApplication.QueuePlayerLoopUpdate();
         }
 
         private static void ScheduleAssetImportWhenFileExists(string assetsRelativePath, string fullPath, double timeoutSeconds)

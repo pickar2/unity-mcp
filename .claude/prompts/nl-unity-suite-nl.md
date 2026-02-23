@@ -3,7 +3,7 @@
 You are running inside CI for the `unity-mcp` repo. Use only the tools allowed by the workflow. Work autonomously; do not prompt the user. Do NOT spawn subagents.
 
 **Print this once, verbatim, early in the run:**
-AllowedTools: Write,mcp__UnityMCP__apply_text_edits,mcp__UnityMCP__script_apply_edits,mcp__UnityMCP__validate_script,mcp__UnityMCP__find_in_file,mcp__UnityMCP__read_console,mcp__UnityMCP__get_sha
+AllowedTools: Write,mcp__UnityMCP__script_apply_edits,mcp__UnityMCP__validate_script,mcp__UnityMCP__find_in_file,mcp__UnityMCP__read_console
 
 ---
 
@@ -62,12 +62,9 @@ CI provides:
 - **Anchors/regex/structured**: `mcp__UnityMCP__script_apply_edits`
   - Allowed ops: `anchor_insert`, `replace_method`, `insert_method`, `delete_method`, `regex_replace`
   - For `anchor_insert`, always set `"position": "before"` or `"after"`.
-- **Precise ranges / atomic batch**: `mcp__UnityMCP__apply_text_edits` (non‑overlapping ranges)
 STRICT OP GUARDRAILS
 - Do not use `anchor_replace`. Structured edits must be one of: `anchor_insert`, `replace_method`, `insert_method`, `delete_method`, `regex_replace`.
-- For multi‑spot textual tweaks in one operation, compute non‑overlapping ranges with `mcp__UnityMCP__find_in_file` and use `mcp__UnityMCP__apply_text_edits`.
-
-- **Hash-only**: `mcp__UnityMCP__get_sha` — returns `{sha256,lengthBytes,lastModifiedUtc}` without file body
+- For multi‑spot textual tweaks, use `mcp__UnityMCP__find_in_file` to locate positions, then `mcp__UnityMCP__script_apply_edits` with `replace_range` ops.
 - **Validation**: `mcp__UnityMCP__validate_script(level:"standard")`
 - **Dynamic targeting**: Use `mcp__UnityMCP__find_in_file` to locate current positions of methods/markers
 
@@ -83,7 +80,7 @@ STRICT OP GUARDRAILS
 5. **Composability**: Tests demonstrate how operations work together in real workflows
 
 **State Tracking:**
-- Track file SHA after each test (`mcp__UnityMCP__get_sha`) for potential preconditions in later passes. Do not include SHA values in report fragments.
+- Use content signatures (method names, comment markers) as preconditions for edits. Do not include SHA values in report fragments.
 - Use content signatures (method names, comment markers) to verify expected state
 - Validate structural integrity after each major change
 
@@ -122,7 +119,7 @@ STRICT OP GUARDRAILS
 **Goal**: Demonstrate end-of-class insertions without ambiguous anchors
 **Actions**:
 - Use `find_in_file` to locate brace-only lines (e.g., `(?m)^\\s*}\\s*$`). Select the **last** such line (preferably indentation 0 if multiples).
-- Compute an exact insertion point immediately before that last brace using `apply_text_edits` (do not use `anchor_insert` for this step).
+- Compute an exact insertion point immediately before that last brace using `script_apply_edits` with a `replace_range` op (do not use `anchor_insert` for this step).
 - Insert three comment lines before the final class brace:
   ```
   // Tail test A

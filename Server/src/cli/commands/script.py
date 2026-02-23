@@ -21,30 +21,30 @@ def script():
 @script.command("create")
 @click.argument("name")
 @click.option(
-    "--path", "-p",
-    default="Assets/Scripts",
-    help="Directory to create the script in."
+    "--path", "-p", default="Assets/Scripts", help="Directory to create the script in."
 )
 @click.option(
-    "--type", "-t",
+    "--type",
+    "-t",
     "script_type",
-    type=click.Choice(["MonoBehaviour", "ScriptableObject",
-                      "Editor", "EditorWindow", "Plain"]),
+    type=click.Choice(
+        ["MonoBehaviour", "ScriptableObject", "Editor", "EditorWindow", "Plain"]
+    ),
     default="MonoBehaviour",
-    help="Type of script to create."
+    help="Type of script to create.",
 )
+@click.option("--namespace", "-n", default=None, help="Namespace for the script.")
 @click.option(
-    "--namespace", "-n",
-    default=None,
-    help="Namespace for the script."
-)
-@click.option(
-    "--contents", "-c",
-    default=None,
-    help="Full script contents (overrides template)."
+    "--contents", "-c", default=None, help="Full script contents (overrides template)."
 )
 @handle_unity_errors
-def create(name: str, path: str, script_type: str, namespace: Optional[str], contents: Optional[str]):
+def create(
+    name: str,
+    path: str,
+    script_type: str,
+    namespace: Optional[str],
+    contents: Optional[str],
+):
     """Create a new C# script.
 
     \b
@@ -77,16 +77,10 @@ def create(name: str, path: str, script_type: str, namespace: Optional[str], con
 @script.command("read")
 @click.argument("path")
 @click.option(
-    "--start-line", "-s",
-    default=None,
-    type=int,
-    help="Starting line number (1-based)."
+    "--start-line", "-s", default=None, type=int, help="Starting line number (1-based)."
 )
 @click.option(
-    "--line-count", "-n",
-    default=None,
-    type=int,
-    help="Number of lines to read."
+    "--line-count", "-n", default=None, type=int, help="Number of lines to read."
 )
 @handle_unity_errors
 def read(path: str, start_line: Optional[int], line_count: Optional[int]):
@@ -129,11 +123,7 @@ def read(path: str, start_line: Optional[int], line_count: Optional[int]):
 
 @script.command("delete")
 @click.argument("path")
-@click.option(
-    "--force", "-f",
-    is_flag=True,
-    help="Skip confirmation prompt."
-)
+@click.option("--force", "-f", is_flag=True, help="Skip confirmation prompt.")
 @handle_unity_errors
 def delete(path: str, force: bool):
     """Delete a C# script.
@@ -166,9 +156,10 @@ def delete(path: str, force: bool):
 @script.command("edit")
 @click.argument("path")
 @click.option(
-    "--edits", "-e",
+    "--edits",
+    "-e",
     required=True,
-    help='Edits as JSON array of {startLine, startCol, endLine, endCol, newText}.'
+    help="Edits as JSON array of {startLine, startCol, endLine, endCol, newText}.",
 )
 @handle_unity_errors
 def edit(path: str, edits: str):
@@ -182,12 +173,19 @@ def edit(path: str, edits: str):
 
     edits_list = parse_json_list_or_exit(edits, "edits")
 
+    parts = path.rsplit("/", 1)
+    filename = parts[-1]
+    directory = parts[0] if len(parts) > 1 else "Assets"
+    name = filename[:-3] if filename.endswith(".cs") else filename
+
     params: dict[str, Any] = {
-        "uri": path,
+        "action": "apply_text_edits",
+        "name": name,
+        "path": directory,
         "edits": edits_list,
     }
 
-    result = run_command("apply_text_edits", params, config)
+    result = run_command("manage_script", params, config)
     click.echo(format_output(result, config.format))
     if result.get("success"):
         print_success(f"Applied edits to: {path}")
@@ -196,10 +194,11 @@ def edit(path: str, edits: str):
 @script.command("validate")
 @click.argument("path")
 @click.option(
-    "--level", "-l",
+    "--level",
+    "-l",
     type=click.Choice(["basic", "standard"]),
     default="basic",
-    help="Validation level."
+    help="Validation level.",
 )
 @handle_unity_errors
 def validate(path: str, level: str):

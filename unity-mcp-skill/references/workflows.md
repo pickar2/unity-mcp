@@ -135,27 +135,11 @@ for i in range(10):
 
 ### Create New Script and Attach
 
-```python
-# 1. Create script
-create_script(
-    path="Assets/Scripts/EnemyAI.cs",
-    contents='''using UnityEngine;
+Write C# scripts directly to the filesystem. Unity auto-detects changes and compiles.
 
-public class EnemyAI : MonoBehaviour
-{
-    public float speed = 5f;
-    public Transform target;
-    
-    void Update()
-    {
-        if (target != null)
-        {
-            Vector3 direction = (target.position - transform.position).normalized;
-            transform.position += direction * speed * Time.deltaTime;
-        }
-    }
-}'''
-)
+```python
+# 1. Write the script file to disk (use your file writing tool)
+# Path: Assets/Scripts/EnemyAI.cs
 
 # 2. CRITICAL: Refresh and compile
 refresh_unity(mode="force", scope="scripts", compile="request", wait_for_ready=True)
@@ -176,10 +160,7 @@ else:
 ### Edit Existing Script Safely
 
 ```python
-# 1. Get current SHA
-sha_info = get_sha(uri="mcpforunity://path/Assets/Scripts/PlayerController.cs")
-
-# 2. Find the method to edit
+# 1. Find the method to edit
 matches = find_in_file(
     uri="mcpforunity://path/Assets/Scripts/PlayerController.cs",
     pattern="void Update\\(\\)"
@@ -389,23 +370,8 @@ while True:
 ### Test-Driven Development Pattern
 
 ```python
-# 1. Write test first
-create_script(
-    path="Assets/Tests/Editor/PlayerTests.cs",
-    contents='''using NUnit.Framework;
-using UnityEngine;
-
-public class PlayerTests
-{
-    [Test]
-    public void TestPlayerStartsAtOrigin()
-    {
-        var player = new GameObject("TestPlayer");
-        Assert.AreEqual(Vector3.zero, player.transform.position);
-        Object.DestroyImmediate(player);
-    }
-}'''
-)
+# 1. Write test file to disk (use your file writing tool)
+# Path: Assets/Tests/Editor/PlayerTests.cs
 
 # 2. Refresh
 refresh_unity(mode="force", scope="scripts", compile="request", wait_for_ready=True)
@@ -565,14 +531,13 @@ scene_object(action="delete", target_regex="Temp_.*")
 ### Stale File Recovery
 
 ```python
-try:
-    apply_text_edits(uri=script_uri, edits=[...], precondition_sha256=old_sha)
-except Exception as e:
-    if "stale_file" in str(e):
-        # Re-fetch SHA
-        new_sha = get_sha(uri=script_uri)
-        # Retry with new SHA
-        apply_text_edits(uri=script_uri, edits=[...], precondition_sha256=new_sha["sha256"])
+# If script_apply_edits fails with "stale_file", the file changed since last read.
+# Re-read the file, re-apply your edits, and retry.
+script_apply_edits(
+    name="MyScript",
+    path="Assets/Scripts",
+    edits=[{"op": "replace_method", "methodName": "Update", "replacement": "void Update() { }"}]
+)
 ```
 
 ### Domain Reload Recovery

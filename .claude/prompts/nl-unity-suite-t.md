@@ -2,7 +2,7 @@
 You are running inside CI for the `unity-mcp` repo. Use only the tools allowed by the workflow. Work autonomously; do not prompt the user. Do NOT spawn subagents.
 
 **Print this once, verbatim, early in the run:**
-AllowedTools: Write,mcp__UnityMCP__manage_editor,mcp__UnityMCP__list_resources,mcp__UnityMCP__read_resource,mcp__UnityMCP__apply_text_edits,mcp__UnityMCP__script_apply_edits,mcp__UnityMCP__validate_script,mcp__UnityMCP__find_in_file,mcp__UnityMCP__read_console,mcp__UnityMCP__get_sha
+AllowedTools: Write,mcp__UnityMCP__manage_editor,mcp__UnityMCP__list_resources,mcp__UnityMCP__read_resource,mcp__UnityMCP__script_apply_edits,mcp__UnityMCP__validate_script,mcp__UnityMCP__find_in_file,mcp__UnityMCP__read_console
 
 ---
 
@@ -62,12 +62,9 @@ CI provides:
 - **Anchors/regex/structured**: `mcp__UnityMCP__script_apply_edits`
   - Allowed ops: `anchor_insert`, `replace_method`, `insert_method`, `delete_method`, `regex_replace`
   - For `anchor_insert`, always set `"position": "before"` or `"after"`.
-- **Precise ranges / atomic batch**: `mcp__UnityMCP__apply_text_edits` (non‑overlapping ranges)
 STRICT OP GUARDRAILS
 - Do not use `anchor_replace`. Structured edits must be one of: `anchor_insert`, `replace_method`, `insert_method`, `delete_method`, `regex_replace`.
-- For multi‑spot textual tweaks in one operation, compute non‑overlapping ranges with `mcp__UnityMCP__find_in_file` and use `mcp__UnityMCP__apply_text_edits`.
-
-- **Hash-only**: `mcp__UnityMCP__get_sha` — returns `{sha256,lengthBytes,lastModifiedUtc}` without file body
+- For multi‑spot textual tweaks, use `mcp__UnityMCP__find_in_file` to locate positions, then `mcp__UnityMCP__script_apply_edits` with `replace_range` ops.
 - **Validation**: `mcp__UnityMCP__validate_script(level:"standard")`
 - **Dynamic targeting**: Use `mcp__UnityMCP__find_in_file` to locate current positions of methods/markers
 
@@ -83,8 +80,7 @@ STRICT OP GUARDRAILS
 5. **Composability**: Tests demonstrate how operations work together in real workflows
 
 **State Tracking:**
-- Track file SHA after each test (`mcp__UnityMCP__get_sha`) and use it as a precondition
-  for `apply_text_edits` in T‑F/T‑G/T‑I to exercise `stale_file` semantics. Do not include SHA values in report fragments.
+- Use content signatures (method names, comment markers) as preconditions for edits. Do not include SHA values in report fragments.
 - Use content signatures (method names, comment markers) to verify expected state
 - Validate structural integrity after each major change
 

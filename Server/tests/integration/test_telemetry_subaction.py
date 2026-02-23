@@ -6,6 +6,7 @@ def _get_decorator_module():
     import sys
     import pathlib
     import types
+
     # Tests can now import directly from parent package
     # Remove any previously stubbed module to force real import
     sys.modules.pop("core.telemetry_decorator", None)
@@ -16,10 +17,12 @@ def _get_decorator_module():
         FIRST_TOOL_USAGE = "first_tool_usage"
         FIRST_SCRIPT_CREATION = "first_script_creation"
         FIRST_SCENE_MODIFICATION = "first_scene_modification"
+
     tel.MilestoneType = _MilestoneType
 
     def _noop(*a, **k):
         pass
+
     tel.record_resource_usage = _noop
     tel.record_tool_usage = _noop
     tel.record_milestone = _noop
@@ -30,12 +33,16 @@ def _get_decorator_module():
     sys.modules.pop("core.telemetry", None)
     # Ensure attributes exist for monkeypatch targets even if not exported
     if not hasattr(mod, "record_tool_usage"):
+
         def _noop_record_tool_usage(*a, **k):
             pass
+
         mod.record_tool_usage = _noop_record_tool_usage
     if not hasattr(mod, "record_milestone"):
+
         def _noop_record_milestone(*a, **k):
             pass
+
         mod.record_milestone = _noop_record_milestone
     if not hasattr(mod, "_decorator_log_count"):
         mod._decorator_log_count = 0
@@ -110,7 +117,7 @@ def test_subaction_none_when_not_present(monkeypatch):
     def dummy_tool_without_action(ctx, name: str):
         return 123
 
-    wrapped = td.telemetry_tool("apply_text_edits")(dummy_tool_without_action)
+    wrapped = td.telemetry_tool("validate_script")(dummy_tool_without_action)
     _ = wrapped(None, name="X")
-    assert captured["tool_name"] == "apply_text_edits"
+    assert captured["tool_name"] == "validate_script"
     assert captured["sub_action"] is None

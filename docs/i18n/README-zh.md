@@ -76,7 +76,7 @@ openupm add com.coplaydev.unity-mcp
 * **可扩展** — 可与多种 MCP Client 配合使用
 
 ### 可用工具
-`scene_object` • `manage_asset` • `manage_editor` • `manage_material` • `manage_prefabs` • `manage_scene` • `manage_script` • `manage_scriptable_object` • `manage_shader` • `manage_vfx` • `batch_execute` • `find_in_file` • `read_console` • `refresh_unity` • `run_tests` • `get_test_job` • `execute_menu_item` • `apply_text_edits` • `script_apply_edits` • `validate_script` • `create_script` • `delete_script` • `get_sha`
+`scene_object` • `manage_asset` • `manage_editor` • `manage_material` • `manage_prefabs` • `manage_scene` • `manage_scriptable_object` • `manage_shader` • `manage_vfx` • `manage_texture` • `batch_execute` • `find_in_file` • `read_console` • `refresh_unity` • `run_tests` • `get_test_job` • `execute_menu_item` • `script_apply_edits` • `validate_script` • `set_active_instance` • `preflight`
 
 ### 可用资源
 `custom_tools` • `unity_instances` • `menu_items` • `get_tests` • `gameobject` • `gameobject_components` • `editor_state` • `editor_selection` • `editor_prefab_stage` • `project_info` • `project_tags` • `project_layers`

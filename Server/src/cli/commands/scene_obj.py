@@ -153,7 +153,7 @@ def get_object(target: str, components: bool):
 @click.option(
     "--reparent",
     default=None,
-    help="New parent path. Use '' to unparent (move to root).",
+    help="New parent path. Use '/' to unparent (move to root).",
 )
 @click.option("--set-tag", default=None, help="New tag (auto-creates if missing).")
 @click.option("--layer", default=None, help="New layer (number or name).")

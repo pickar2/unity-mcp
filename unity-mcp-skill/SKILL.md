@@ -15,7 +15,7 @@ This skill helps you effectively use the Unity Editor with MCP tools and resourc
 1. Check editor state     → mcpforunity://editor/state
 2. Understand the scene   → mcpforunity://scene/gameobject-api
 3. Find what you need     → scene_object(action="list") or resources
-4. Take action            → tools (scene_object, create_script, script_apply_edits, apply_text_edits, validate_script, delete_script, get_sha, etc.)
+4. Take action            → tools (scene_object, script_apply_edits, validate_script, manage_prefabs, etc.)
 5. Verify results         → read_console, capture_screenshot (in manage_scene), resources
 ```
 
@@ -24,7 +24,7 @@ This skill helps you effectively use the Unity Editor with MCP tools and resourc
 ### 1. After Writing/Editing Scripts: Always Refresh and Check Console
 
 ```python
-# After create_script or script_apply_edits:
+# After script_apply_edits or writing scripts to disk:
 refresh_unity(mode="force", scope="scripts", compile="request", wait_for_ready=True)
 read_console(types=["error"], count=10, include_stacktrace=True)
 ```
@@ -119,7 +119,7 @@ uri="file:///full/path/to/file.cs"
 |----------|-----------|---------|
 | **Scene** | `manage_scene`, `scene_object` | Scene operations, finding objects |
 | **Objects** | `scene_object` | Creating/modifying/deleting GameObjects |
-| **Scripts** | `create_script`, `script_apply_edits`, `refresh_unity` | C# code management |
+| **Scripts** | `script_apply_edits`, `validate_script`, `refresh_unity` | C# code management |
 | **Assets** | `manage_asset`, `manage_prefabs` | Asset operations |
 | **Editor** | `manage_editor`, `execute_menu_item`, `read_console` | Editor control |
 | **Testing** | `run_tests`, `get_test_job` | Unity Test Framework |
@@ -129,12 +129,11 @@ uri="file:///full/path/to/file.cs"
 
 ### Creating a New Script and Using It
 
+Write C# scripts directly to the filesystem. Unity auto-detects changes and compiles.
+
 ```python
-# 1. Create the script
-create_script(
-    path="Assets/Scripts/PlayerController.cs",
-    contents="using UnityEngine;\n\npublic class PlayerController : MonoBehaviour\n{\n    void Update() { }\n}"
-)
+# 1. Write the script file to disk (use your file writing tool)
+# Path: Assets/Scripts/PlayerController.cs
 
 # 2. CRITICAL: Refresh and wait for compilation
 refresh_unity(mode="force", scope="scripts", compile="request", wait_for_ready=True)
@@ -201,7 +200,7 @@ set_active_instance(instance="MyProject@abc123")
 | Symptom | Cause | Solution |
 |---------|-------|----------|
 | Tools return "busy" | Compilation in progress | Wait, check `editor_state` |
-| "stale_file" error | File changed since SHA | Re-fetch SHA with `get_sha`, retry |
+| "stale_file" error | File changed during edit | Re-read file and retry |
 | Connection lost | Domain reload | Wait ~5s, reconnect |
 | Commands fail silently | Wrong instance | Check `set_active_instance` |
 

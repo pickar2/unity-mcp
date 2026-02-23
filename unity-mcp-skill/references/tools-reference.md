@@ -168,28 +168,9 @@ scene_object(
 
 ## Script Tools
 
-### create_script
-
-Create a new C# script.
-
-```python
-create_script(
-    path="Assets/Scripts/MyScript.cs",  # str, required
-    contents='''using UnityEngine;
-
-public class MyScript : MonoBehaviour
-{
-    void Start() { }
-    void Update() { }
-}''',
-    script_type="MonoBehaviour",  # optional hint
-    namespace="MyGame"            # optional namespace
-)
-```
-
 ### script_apply_edits
 
-Apply structured edits to C# scripts (safer than raw text edits).
+Apply structured edits to C# scripts (safer than raw text edits). This is the recommended tool for script modifications.
 
 ```python
 script_apply_edits(
@@ -233,27 +214,6 @@ script_apply_edits(
 )
 ```
 
-### apply_text_edits
-
-Apply precise character-position edits (1-indexed lines/columns).
-
-```python
-apply_text_edits(
-    uri="mcpforunity://path/Assets/Scripts/MyScript.cs",
-    edits=[
-        {
-            "startLine": 10,
-            "startCol": 5,
-            "endLine": 10,
-            "endCol": 20,
-            "newText": "replacement text"
-        }
-    ],
-    precondition_sha256="abc123...",  # optional, prevents stale edits
-    strict=True                        # optional, stricter validation
-)
-```
-
 ### validate_script
 
 Check script for syntax/semantic errors.
@@ -266,22 +226,7 @@ validate_script(
 )
 ```
 
-### get_sha
-
-Get file hash without content (for preconditions).
-
-```python
-get_sha(uri="mcpforunity://path/Assets/Scripts/MyScript.cs")
-# Returns: {"sha256": "...", "lengthBytes": 1234, "lastModifiedUtc": "..."}
-```
-
-### delete_script
-
-Delete a script file.
-
-```python
-delete_script(uri="mcpforunity://path/Assets/Scripts/OldScript.cs")
-```
+**Note:** For creating or deleting scripts, use standard file operations directly. Unity will auto-detect changes and compile.
 
 ---
 
@@ -682,7 +627,7 @@ Some tools are blocked or behave differently during play mode:
 | Tool | Restriction |
 |------|-------------|
 | `run_tests` | Blocked entirely (except `clear_stuck`) |
-| `manage_script` | Write actions blocked (create/update/delete/edit/apply_text_edits) |
+| `script_apply_edits` | Blocked (would trigger compilation and exit play mode) |
 | `manage_shader` | Write actions blocked (create/update/delete) |
 | `manage_scene` | create/load/save blocked |
 | `refresh_unity` | `compile="request"` blocked |

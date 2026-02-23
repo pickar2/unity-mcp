@@ -14,8 +14,16 @@ from services.tools.preflight import preflight
 @mcp_for_unity_tool(
     description="""CRUD operations on Unity scenes.
 
-Read-only: get_hierarchy, get_active, get_build_settings, screenshot.
-Modifying: create, load, save.""",
+Examples:
+  manage_scene(action="get_hierarchy")
+  manage_scene(action="get_hierarchy", parent="Canvas", page_size=50)
+  manage_scene(action="get_active")
+  manage_scene(action="screenshot")
+  manage_scene(action="screenshot", screenshot_file_name="before_change")
+  manage_scene(action="create", name="Level2")
+  manage_scene(action="load", path="Assets/Scenes/Level2.unity")
+  manage_scene(action="save")
+  manage_scene(action="get_build_settings")""",
     annotations=ToolAnnotations(
         title="Manage Scene",
         destructiveHint=True,
@@ -23,38 +31,52 @@ Modifying: create, load, save.""",
 )
 async def manage_scene(
     ctx: Context,
-    action: Annotated[Literal[
-        "create",
-        "load",
-        "save",
-        "get_hierarchy",
-        "get_active",
-        "get_build_settings",
-        "screenshot",
-    ], "Perform CRUD operations on Unity scenes, and capture a screenshot."],
+    action: Annotated[
+        Literal[
+            "create",
+            "load",
+            "save",
+            "get_hierarchy",
+            "get_active",
+            "get_build_settings",
+            "screenshot",
+        ],
+        "Perform CRUD operations on Unity scenes, and capture a screenshot.",
+    ],
     name: Annotated[str, "Scene name."] | None = None,
     path: Annotated[str, "Scene path."] | None = None,
-    build_index: Annotated[int | str,
-                           "Unity build index (quote as string, e.g., '0')."] | None = None,
-    screenshot_file_name: Annotated[str,
-                                    "Screenshot file name (optional). Defaults to timestamp when omitted."] | None = None,
-    screenshot_super_size: Annotated[int | str,
-                                     "Screenshot supersize multiplier (integer ≥1). Optional."] | None = None,
+    build_index: Annotated[int | str, "Unity build index (quote as string, e.g., '0')."]
+    | None = None,
+    screenshot_file_name: Annotated[
+        str, "Screenshot file name (optional). Defaults to timestamp when omitted."
+    ]
+    | None = None,
+    screenshot_super_size: Annotated[
+        int | str, "Screenshot supersize multiplier (integer ≥1). Optional."
+    ]
+    | None = None,
     # --- get_hierarchy paging/safety ---
-    parent: Annotated[str | int,
-                      "Optional parent GameObject reference (name/path/instanceID) to list direct children."] | None = None,
-    page_size: Annotated[int | str,
-                         "Page size for get_hierarchy paging."] | None = None,
-    cursor: Annotated[int | str,
-                      "Opaque cursor for paging (offset)."] | None = None,
-    max_nodes: Annotated[int | str,
-                         "Hard cap on returned nodes per request (safety)."] | None = None,
-    max_depth: Annotated[int | str,
-                         "Accepted for forward-compatibility; current paging returns a single level."] | None = None,
-    max_children_per_node: Annotated[int | str,
-                                     "Child paging hint (safety)."] | None = None,
-    include_transform: Annotated[bool | str,
-                                 "If true, include local transform in node summaries."] | None = None,
+    parent: Annotated[
+        str | int,
+        "Optional parent GameObject reference (name/path/instanceID) to list direct children.",
+    ]
+    | None = None,
+    page_size: Annotated[int | str, "Page size for get_hierarchy paging."]
+    | None = None,
+    cursor: Annotated[int | str, "Opaque cursor for paging (offset)."] | None = None,
+    max_nodes: Annotated[int | str, "Hard cap on returned nodes per request (safety)."]
+    | None = None,
+    max_depth: Annotated[
+        int | str,
+        "Accepted for forward-compatibility; current paging returns a single level.",
+    ]
+    | None = None,
+    max_children_per_node: Annotated[int | str, "Child paging hint (safety)."]
+    | None = None,
+    include_transform: Annotated[
+        bool | str, "If true, include local transform in node summaries."
+    ]
+    | None = None,
 ) -> dict[str, Any]:
     # Get active instance from session state
     # Removed session_state import
@@ -69,10 +91,8 @@ async def manage_scene(
         coerced_cursor = coerce_int(cursor, default=None)
         coerced_max_nodes = coerce_int(max_nodes, default=None)
         coerced_max_depth = coerce_int(max_depth, default=None)
-        coerced_max_children_per_node = coerce_int(
-            max_children_per_node, default=None)
-        coerced_include_transform = coerce_bool(
-            include_transform, default=None)
+        coerced_max_children_per_node = coerce_int(max_children_per_node, default=None)
+        coerced_include_transform = coerce_bool(include_transform, default=None)
 
         params: dict[str, Any] = {"action": action}
         if name:
@@ -103,12 +123,22 @@ async def manage_scene(
             params["includeTransform"] = coerced_include_transform
 
         # Use centralized retry helper with instance routing
-        response = await send_with_unity_instance(async_send_command_with_retry, unity_instance, "manage_scene", params)
+        response = await send_with_unity_instance(
+            async_send_command_with_retry, unity_instance, "manage_scene", params
+        )
 
         # Preserve structured failure data; unwrap success into a friendlier shape
         if isinstance(response, dict) and response.get("success"):
-            return {"success": True, "message": response.get("message", "Scene operation successful."), "data": response.get("data")}
-        return response if isinstance(response, dict) else {"success": False, "message": str(response)}
+            return {
+                "success": True,
+                "message": response.get("message", "Scene operation successful."),
+                "data": response.get("data"),
+            }
+        return (
+            response
+            if isinstance(response, dict)
+            else {"success": False, "message": str(response)}
+        )
 
     except Exception as e:
         return {"success": False, "message": f"Python error managing scene: {str(e)}"}

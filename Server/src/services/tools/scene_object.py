@@ -49,7 +49,7 @@ Batch Operations (for set/delete):
 
 Position/rotation params use LOCAL coordinates (relative to parent).
 The get response returns both local (position, rotation) and world (world_position, world_rotation).
-To unparent an object (move to scene root), set parent="" or parent="/".
+To unparent an object (move to scene root), set parent="/".
 
 Examples:
   scene_object(action="list", tag="Enemy")
@@ -61,7 +61,7 @@ Examples:
   scene_object(action="set", target="Player", remove_components=["BoxCollider"])
   scene_object(action="set", target="Player", component="Rigidbody", properties={"mass": 10})
   scene_object(action="set", target_regex=".*Enemy", active=false)
-  scene_object(action="set", target="Child", parent="")
+  scene_object(action="set", target="Child", parent="/")
   scene_object(action="create", name="Cube", primitive="Cube", position=[0, 1, 0], is_static=true)
   scene_object(action="delete", target="/Temp/Object")
   scene_object(action="duplicate", target="Player", name="Player2", offset=[5, 0, 0], rotation=[0, 180, 0])
@@ -88,7 +88,7 @@ async def scene_object(
     ] = None,
     parent: Annotated[
         str | None,
-        'Parent path for create/reparent, or filter for list/batch operations. Use "" or "/" to unparent (move to scene root).',
+        'Parent path for create/reparent, or filter for list/batch operations. Use "/" to unparent (move to scene root).',
     ] = None,
     component: Annotated[
         str | None,

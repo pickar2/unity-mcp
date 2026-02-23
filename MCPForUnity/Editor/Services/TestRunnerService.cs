@@ -20,7 +20,9 @@ namespace MCPForUnity.Editor.Services
     {
         private static readonly TestMode[] AllModes = { TestMode.EditMode, TestMode.PlayMode };
 
-        private readonly TestRunnerApi _testRunnerApi;
+        // Instance needed for Execute/RetrieveTestList (no static equivalents yet).
+        // Callbacks use static RegisterTestCallback to avoid ScriptableObject lifecycle issues.
+        private readonly TestRunnerApi _api;
         private readonly SemaphoreSlim _operationLock = new SemaphoreSlim(1, 1);
         private readonly List<ITestResultAdaptor> _leafResults = new List<ITestResultAdaptor>();
         private TaskCompletionSource<TestRunResult> _runCompletionSource;
@@ -28,8 +30,9 @@ namespace MCPForUnity.Editor.Services
 
         public TestRunnerService()
         {
-            _testRunnerApi = ScriptableObject.CreateInstance<TestRunnerApi>();
-            _testRunnerApi.RegisterCallbacks(this);
+            _api = ScriptableObject.CreateInstance<TestRunnerApi>();
+            _api.hideFlags = HideFlags.HideAndDontSave;
+            TestRunnerApi.RegisterTestCallback(this);
         }
 
         public async Task<IReadOnlyList<Dictionary<string, string>>> GetTestsAsync(TestMode? mode)
@@ -123,7 +126,7 @@ namespace MCPForUnity.Editor.Services
                     TestRunnerNoThrottle.ApplyNoThrottlingPreemptive();
                 }
 
-                _testRunnerApi.Execute(settings);
+                _api.Execute(settings);
 
                 runTask = _runCompletionSource.Task;
             }
@@ -159,17 +162,14 @@ namespace MCPForUnity.Editor.Services
         {
             try
             {
-                _testRunnerApi?.UnregisterCallbacks(this);
+                TestRunnerApi.UnregisterTestCallback(this);
             }
             catch
             {
-                // Ignore cleanup errors
             }
 
-            if (_testRunnerApi != null)
-            {
-                ScriptableObject.DestroyImmediate(_testRunnerApi);
-            }
+            if (_api != null)
+                ScriptableObject.DestroyImmediate(_api);
 
             _operationLock.Dispose();
         }
@@ -373,12 +373,11 @@ namespace MCPForUnity.Editor.Services
         {
             var tcs = new TaskCompletionSource<ITestAdaptor>(TaskCreationOptions.RunContinuationsAsynchronously);
 
-            _testRunnerApi.RetrieveTestList(mode, root =>
+            _api.RetrieveTestList(mode, root =>
             {
                 tcs.TrySetResult(root);
             });
 
-            // Ensure the editor pumps at least one additional update in case the window is unfocused.
             EditorApplication.QueuePlayerLoopUpdate();
 
             var completed = await Task.WhenAny(tcs.Task, Task.Delay(TimeSpan.FromSeconds(30))).ConfigureAwait(true);
