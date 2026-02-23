@@ -1,12 +1,21 @@
 from starlette.requests import Request
 from transport.unity_instance_middleware import (
     UnityInstanceMiddleware,
-    get_unity_instance_middleware
+    get_unity_instance_middleware,
 )
 from services.api_key_service import ApiKeyService
-from transport.legacy.unity_connection import get_unity_connection_pool, UnityConnectionPool
+from transport.legacy.unity_connection import (
+    get_unity_connection_pool,
+    UnityConnectionPool,
+)
 from services.tools import register_all_tools
-from core.telemetry import record_milestone, record_telemetry, MilestoneType, RecordType, get_package_version
+from core.telemetry import (
+    record_milestone,
+    record_telemetry,
+    MilestoneType,
+    RecordType,
+    get_package_version,
+)
 from services.resources import register_all_resources
 from transport.plugin_registry import PluginRegistry
 from transport.plugin_hub import PluginHub
@@ -76,18 +85,20 @@ logging.basicConfig(
     level=getattr(logging, config.log_level),
     format=config.log_format,
     stream=None,  # None -> defaults to sys.stderr; avoid stdout used by MCP stdio
-    force=True    # Ensure our handler replaces any prior stdout handlers
+    force=True,  # Ensure our handler replaces any prior stdout handlers
 )
 logger = logging.getLogger("mcp-for-unity-server")
 
 # Also write logs to a rotating file so logs are available when launched via stdio
 try:
-    _log_dir = os.path.join(os.path.expanduser(
-        "~/Library/Application Support/UnityMCP"), "Logs")
+    _log_dir = os.path.join(
+        os.path.expanduser("~/Library/Application Support/UnityMCP"), "Logs"
+    )
     os.makedirs(_log_dir, exist_ok=True)
     _file_path = os.path.join(_log_dir, "unity_mcp_server.log")
     _fh = WindowsSafeRotatingFileHandler(
-        _file_path, maxBytes=512*1024, backupCount=2, encoding="utf-8")
+        _file_path, maxBytes=512 * 1024, backupCount=2, encoding="utf-8"
+    )
     _fh.setFormatter(logging.Formatter(config.log_format))
     _fh.setLevel(getattr(logging, config.log_level))
     logger.addHandler(_fh)
@@ -108,7 +119,8 @@ except Exception as exc:
 for noisy in ("httpx", "urllib3", "mcp.server.lowlevel.server"):
     try:
         logging.getLogger(noisy).setLevel(
-            max(logging.WARNING, getattr(logging, config.log_level)))
+            max(logging.WARNING, getattr(logging, config.log_level))
+        )
         logging.getLogger(noisy).propagate = False
     except Exception:
         pass
@@ -116,7 +128,6 @@ for noisy in ("httpx", "urllib3", "mcp.server.lowlevel.server"):
 # Import telemetry only after logging is configured to ensure its logs use stderr and proper levels
 # Ensure a slightly higher telemetry timeout unless explicitly overridden by env
 try:
-
     # Ensure generous timeout unless explicitly overridden by env
     if not os.environ.get("UNITY_MCP_TELEMETRY_TIMEOUT"):
         os.environ["UNITY_MCP_TELEMETRY_TIMEOUT"] = "5.0"
@@ -146,13 +157,18 @@ async def server_lifespan(server: FastMCP) -> AsyncIterator[dict[str, Any]]:
 
     # Note: When using HTTP transport, FastMCP handles the HTTP server
     # Tool registration will be handled through FastMCP endpoints
-    enable_http_server = os.environ.get(
-        "UNITY_MCP_ENABLE_HTTP_SERVER", "").lower() in ("1", "true", "yes", "on")
+    enable_http_server = os.environ.get("UNITY_MCP_ENABLE_HTTP_SERVER", "").lower() in (
+        "1",
+        "true",
+        "yes",
+        "on",
+    )
     if enable_http_server:
         http_host = os.environ.get("UNITY_MCP_HTTP_HOST", "localhost")
         http_port = int(os.environ.get("UNITY_MCP_HTTP_PORT", "8080"))
         logger.info(
-            f"HTTP tool registry will be available on http://{http_host}:{http_port}")
+            f"HTTP tool registry will be available on http://{http_host}:{http_port}"
+        )
 
     global _plugin_registry
     if _plugin_registry is None:
@@ -167,21 +183,30 @@ async def server_lifespan(server: FastMCP) -> AsyncIterator[dict[str, Any]]:
 
     def _emit_startup():
         try:
-            record_telemetry(RecordType.STARTUP, {
-                "server_version": _server_version,
-                "startup_time": start_time,
-            })
+            record_telemetry(
+                RecordType.STARTUP,
+                {
+                    "server_version": _server_version,
+                    "startup_time": start_time,
+                },
+            )
             record_milestone(MilestoneType.FIRST_STARTUP)
         except Exception:
             logger.debug("Deferred startup telemetry failed", exc_info=True)
+
     threading.Timer(1.0, _emit_startup).start()
 
     try:
-        skip_connect = os.environ.get(
-            "UNITY_MCP_SKIP_STARTUP_CONNECT", "").lower() in ("1", "true", "yes", "on")
+        skip_connect = os.environ.get("UNITY_MCP_SKIP_STARTUP_CONNECT", "").lower() in (
+            "1",
+            "true",
+            "yes",
+            "on",
+        )
         if skip_connect:
             logger.info(
-                "Skipping Unity connection on startup (UNITY_MCP_SKIP_STARTUP_CONNECT=1)")
+                "Skipping Unity connection on startup (UNITY_MCP_SKIP_STARTUP_CONNECT=1)"
+            )
         else:
             # Initialize connection pool and discover instances
             _unity_connection_pool = get_unity_connection_pool()
@@ -189,26 +214,29 @@ async def server_lifespan(server: FastMCP) -> AsyncIterator[dict[str, Any]]:
 
             if instances:
                 logger.info(
-                    f"Discovered {len(instances)} Unity instance(s): {[i.id for i in instances]}")
+                    f"Discovered {len(instances)} Unity instance(s): {[i.id for i in instances]}"
+                )
 
                 # Try to connect to default instance
                 try:
                     _unity_connection_pool.get_connection()
-                    logger.info(
-                        "Connected to default Unity instance on startup")
+                    logger.info("Connected to default Unity instance on startup")
 
                     # Record successful Unity connection (deferred)
-                    threading.Timer(1.0, lambda: record_telemetry(
-                        RecordType.UNITY_CONNECTION,
-                        {
-                            "status": "connected",
-                            "connection_time_ms": (time.perf_counter() - start_clk) * 1000,
-                            "instance_count": len(instances)
-                        }
-                    )).start()
+                    threading.Timer(
+                        1.0,
+                        lambda: record_telemetry(
+                            RecordType.UNITY_CONNECTION,
+                            {
+                                "status": "connected",
+                                "connection_time_ms": (time.perf_counter() - start_clk)
+                                * 1000,
+                                "instance_count": len(instances),
+                            },
+                        ),
+                    ).start()
                 except Exception as e:
-                    logger.warning(
-                        f"Could not connect to default Unity instance: {e}")
+                    logger.warning(f"Could not connect to default Unity instance: {e}")
             else:
                 logger.warning("No Unity instances found on startup")
 
@@ -217,25 +245,31 @@ async def server_lifespan(server: FastMCP) -> AsyncIterator[dict[str, Any]]:
 
         # Record connection failure (deferred)
         _err_msg = str(e)[:200]
-        threading.Timer(1.0, lambda: record_telemetry(
-            RecordType.UNITY_CONNECTION,
-            {
-                "status": "failed",
-                "error": _err_msg,
-                "connection_time_ms": (time.perf_counter() - start_clk) * 1000,
-            }
-        )).start()
+        threading.Timer(
+            1.0,
+            lambda: record_telemetry(
+                RecordType.UNITY_CONNECTION,
+                {
+                    "status": "failed",
+                    "error": _err_msg,
+                    "connection_time_ms": (time.perf_counter() - start_clk) * 1000,
+                },
+            ),
+        ).start()
     except Exception as e:
         logger.warning(f"Unexpected error connecting to Unity on startup: {e}")
         _err_msg = str(e)[:200]
-        threading.Timer(1.0, lambda: record_telemetry(
-            RecordType.UNITY_CONNECTION,
-            {
-                "status": "failed",
-                "error": _err_msg,
-                "connection_time_ms": (time.perf_counter() - start_clk) * 1000,
-            }
-        )).start()
+        threading.Timer(
+            1.0,
+            lambda: record_telemetry(
+                RecordType.UNITY_CONNECTION,
+                {
+                    "status": "failed",
+                    "error": _err_msg,
+                    "connection_time_ms": (time.perf_counter() - start_clk) * 1000,
+                },
+            ),
+        ).start()
 
     try:
         # Yield shared state for lifespan consumers (e.g., middleware)
@@ -304,16 +338,18 @@ Payload sizing & paging (important):
 - `manage_scene(action="get_hierarchy")`:
   - Use `page_size` + `cursor` and follow `next_cursor` until null.
   - `page_size` is **items per page**; recommended starting point: **50**.
-- `manage_gameobject(action="get_components")`:
-  - Start with `include_properties=false` (metadata-only) and small `page_size` (e.g. **10-25**).
-  - Only request `include_properties=true` when needed; keep `page_size` small (e.g. **3-10**) to bound payloads.
+- `scene_object(action="get", components=true)`:
+  - Use `components=false` first (metadata-only) to see what's on an object.
+  - Only request `components=true` when you need full property data.
 - `manage_asset(action="search")`:
   - Use paging (`page_size`, `page_number`) and keep `page_size` modest (e.g. **25-50**) to avoid token-heavy responses.
   - Keep `generate_preview=false` unless you explicitly need thumbnails (previews may include large base64 payloads).
 """
 
 
-def _normalize_instance_token(instance_token: str | None) -> tuple[str | None, str | None]:
+def _normalize_instance_token(
+    instance_token: str | None,
+) -> tuple[str | None, str | None]:
     if not instance_token:
         return None, None
     if "@" in instance_token:
@@ -331,16 +367,19 @@ def create_mcp_server(project_scoped_tools: bool) -> FastMCP:
 
     global custom_tool_service
     custom_tool_service = CustomToolService(
-        mcp, project_scoped_tools=project_scoped_tools)
+        mcp, project_scoped_tools=project_scoped_tools
+    )
 
     @mcp.custom_route("/health", methods=["GET"])
     async def health_http(_: Request) -> JSONResponse:
-        return JSONResponse({
-            "status": "healthy",
-            "timestamp": time.time(),
-            "version": _server_version or "unknown",
-            "message": "MCP for Unity server is running"
-        })
+        return JSONResponse(
+            {
+                "status": "healthy",
+                "timestamp": time.time(),
+                "version": _server_version or "unknown",
+                "message": "MCP for Unity server is running",
+            }
+        )
 
     @mcp.custom_route("/api/auth/login-url", methods=["GET"])
     async def auth_login_url(_: Request) -> JSONResponse:
@@ -353,13 +392,16 @@ def create_mcp_server(project_scoped_tools: bool) -> FastMCP:
                 },
                 status_code=404,
             )
-        return JSONResponse({
-            "success": True,
-            "login_url": config.api_key_login_url,
-        })
+        return JSONResponse(
+            {
+                "success": True,
+                "login_url": config.api_key_login_url,
+            }
+        )
 
     # Only expose CLI routes if running locally (not in remote hosted mode)
     if not config.http_remote_hosted:
+
         @mcp.custom_route("/api/command", methods=["POST"])
         async def cli_command_route(request: Request) -> JSONResponse:
             """REST endpoint for CLI commands to Unity."""
@@ -371,25 +413,33 @@ def create_mcp_server(project_scoped_tools: bool) -> FastMCP:
                 unity_instance = body.get("unity_instance")
 
                 if not command_type:
-                    return JSONResponse({"success": False, "error": "Missing 'type' field"}, status_code=400)
+                    return JSONResponse(
+                        {"success": False, "error": "Missing 'type' field"},
+                        status_code=400,
+                    )
 
                 # Get available sessions
                 sessions = await PluginHub.get_sessions()
                 if not sessions.sessions:
-                    return JSONResponse({
-                        "success": False,
-                        "error": "No Unity instances connected. Make sure Unity is running with MCP plugin."
-                    }, status_code=503)
+                    return JSONResponse(
+                        {
+                            "success": False,
+                            "error": "No Unity instances connected. Make sure Unity is running with MCP plugin.",
+                        },
+                        status_code=503,
+                    )
 
                 # Find target session
                 session_id = None
                 session_details = None
-                instance_name, instance_hash = _normalize_instance_token(
-                    unity_instance)
+                instance_name, instance_hash = _normalize_instance_token(unity_instance)
                 if unity_instance:
                     # Try to match by hash or project name
                     for sid, details in sessions.sessions.items():
-                        if details.hash == instance_hash or details.project in (instance_name, unity_instance):
+                        if details.hash == instance_hash or details.project in (
+                            instance_name,
+                            unity_instance,
+                        ):
                             session_id = sid
                             session_details = details
                             break
@@ -412,23 +462,27 @@ def create_mcp_server(project_scoped_tools: bool) -> FastMCP:
                         tool_name = None
                         tool_params = {}
                         if isinstance(params, dict):
-                            tool_name = params.get(
-                                "tool_name") or params.get("name")
-                            tool_params = params.get(
-                                "parameters") or params.get("params") or {}
+                            tool_name = params.get("tool_name") or params.get("name")
+                            tool_params = (
+                                params.get("parameters") or params.get("params") or {}
+                            )
 
                         if not tool_name:
                             return JSONResponse(
-                                {"success": False,
-                                    "error": "Missing 'tool_name' for execute_custom_tool"},
+                                {
+                                    "success": False,
+                                    "error": "Missing 'tool_name' for execute_custom_tool",
+                                },
                                 status_code=400,
                             )
                         if tool_params is None:
                             tool_params = {}
                         if not isinstance(tool_params, dict):
                             return JSONResponse(
-                                {"success": False,
-                                    "error": "Tool parameters must be an object/dict"},
+                                {
+                                    "success": False,
+                                    "error": "Tool parameters must be an object/dict",
+                                },
                                 status_code=400,
                             )
 
@@ -438,11 +492,14 @@ def create_mcp_server(project_scoped_tools: bool) -> FastMCP:
                             unity_instance_hint = session_details.hash
 
                         project_id = resolve_project_id_for_unity_instance(
-                            unity_instance_hint)
+                            unity_instance_hint
+                        )
                         if not project_id:
                             return JSONResponse(
-                                {"success": False,
-                                    "error": "Could not resolve project id for custom tool"},
+                                {
+                                    "success": False,
+                                    "error": "Could not resolve project id for custom tool",
+                                },
                                 status_code=400,
                             )
 
@@ -458,7 +515,9 @@ def create_mcp_server(project_scoped_tools: bool) -> FastMCP:
 
             except Exception as e:
                 logger.exception("CLI command error: %s", e)
-                return JSONResponse({"success": False, "error": str(e)}, status_code=500)
+                return JSONResponse(
+                    {"success": False, "error": str(e)}, status_code=500
+                )
 
         @mcp.custom_route("/api/instances", methods=["GET"])
         async def cli_instances_route(_: Request) -> JSONResponse:
@@ -467,37 +526,46 @@ def create_mcp_server(project_scoped_tools: bool) -> FastMCP:
                 sessions = await PluginHub.get_sessions()
                 instances = []
                 for session_id, details in sessions.sessions.items():
-                    instances.append({
-                        "session_id": session_id,
-                        "project": details.project,
-                        "hash": details.hash,
-                        "unity_version": details.unity_version,
-                        "connected_at": details.connected_at,
-                    })
+                    instances.append(
+                        {
+                            "session_id": session_id,
+                            "project": details.project,
+                            "hash": details.hash,
+                            "unity_version": details.unity_version,
+                            "connected_at": details.connected_at,
+                        }
+                    )
                 return JSONResponse({"success": True, "instances": instances})
             except Exception as e:
-                return JSONResponse({"success": False, "error": str(e)}, status_code=500)
+                return JSONResponse(
+                    {"success": False, "error": str(e)}, status_code=500
+                )
 
         @mcp.custom_route("/api/custom-tools", methods=["GET"])
         async def cli_custom_tools_route(request: Request) -> JSONResponse:
             """REST endpoint to list custom tools for the active Unity project."""
             try:
                 unity_instance = request.query_params.get("instance")
-                instance_name, instance_hash = _normalize_instance_token(
-                    unity_instance)
+                instance_name, instance_hash = _normalize_instance_token(unity_instance)
 
                 sessions = await PluginHub.get_sessions()
                 if not sessions.sessions:
-                    return JSONResponse({
-                        "success": False,
-                        "error": "No Unity instances connected. Make sure Unity is running with MCP plugin."
-                    }, status_code=503)
+                    return JSONResponse(
+                        {
+                            "success": False,
+                            "error": "No Unity instances connected. Make sure Unity is running with MCP plugin.",
+                        },
+                        status_code=503,
+                    )
 
                 session_details = None
                 if unity_instance:
                     # Try to match by hash or project name
                     for _, details in sessions.sessions.items():
-                        if details.hash == instance_hash or details.project in (instance_name, unity_instance):
+                        if details.hash == instance_hash or details.project in (
+                            instance_name,
+                            unity_instance,
+                        ):
                             session_details = details
                             break
                     if not session_details:
@@ -516,30 +584,36 @@ def create_mcp_server(project_scoped_tools: bool) -> FastMCP:
                 if session_details and session_details.hash:
                     unity_instance_hint = session_details.hash
 
-                project_id = resolve_project_id_for_unity_instance(
-                    unity_instance_hint)
+                project_id = resolve_project_id_for_unity_instance(unity_instance_hint)
                 if not project_id:
                     return JSONResponse(
-                        {"success": False,
-                            "error": "Could not resolve project id for custom tools"},
+                        {
+                            "success": False,
+                            "error": "Could not resolve project id for custom tools",
+                        },
                         status_code=400,
                     )
 
                 service = CustomToolService.get_instance()
                 tools = await service.list_registered_tools(project_id)
                 tools_payload = [
-                    tool.model_dump() if hasattr(tool, "model_dump") else tool for tool in tools
+                    tool.model_dump() if hasattr(tool, "model_dump") else tool
+                    for tool in tools
                 ]
 
-                return JSONResponse({
-                    "success": True,
-                    "project_id": project_id,
-                    "tool_count": len(tools_payload),
-                    "tools": tools_payload,
-                })
+                return JSONResponse(
+                    {
+                        "success": True,
+                        "project_id": project_id,
+                        "tool_count": len(tools_payload),
+                        "tools": tools_payload,
+                    }
+                )
             except Exception as e:
                 logger.exception("CLI custom tools error: %s", e)
-                return JSONResponse({"success": False, "error": str(e)}, status_code=500)
+                return JSONResponse(
+                    {"success": False, "error": str(e)}, status_code=500
+                )
 
     # Initialize and register middleware for session-based Unity instance routing
     # Using the singleton getter ensures we use the same instance everywhere
@@ -563,12 +637,12 @@ def create_mcp_server(project_scoped_tools: bool) -> FastMCP:
 
     # Mount plugin websocket hub at /hub/plugin when HTTP transport is active
     existing_routes = [
-        route for route in mcp._get_additional_http_routes()
+        route
+        for route in mcp._get_additional_http_routes()
         if isinstance(route, WebSocketRoute) and route.path == "/hub/plugin"
     ]
     if not existing_routes:
-        mcp._additional_http_routes.append(
-            WebSocketRoute("/hub/plugin", PluginHub))
+        mcp._additional_http_routes.append(WebSocketRoute("/hub/plugin", PluginHub))
 
     # Register all tools
     register_all_tools(mcp, project_scoped_tools=project_scoped_tools)
@@ -606,14 +680,14 @@ Examples:
 
   # Use environment variable for transport
   UNITY_MCP_TRANSPORT=http UNITY_MCP_HTTP_URL=http://localhost:9000 python -m src.server
-        """
+        """,
     )
     parser.add_argument(
         "--default-instance",
         type=str,
         metavar="INSTANCE",
         help="Default Unity instance to target (project name, hash, or 'Name@hash'). "
-             "Overrides UNITY_MCP_DEFAULT_INSTANCE environment variable."
+        "Overrides UNITY_MCP_DEFAULT_INSTANCE environment variable.",
     )
     parser.add_argument(
         "--transport",
@@ -621,7 +695,7 @@ Examples:
         choices=["stdio", "http"],
         default="stdio",
         help="Transport protocol to use: stdio or http (default: stdio). "
-             "Overrides UNITY_MCP_TRANSPORT environment variable."
+        "Overrides UNITY_MCP_TRANSPORT environment variable.",
     )
     parser.add_argument(
         "--http-url",
@@ -629,7 +703,7 @@ Examples:
         default="http://localhost:8080",
         metavar="URL",
         help="HTTP server URL (default: http://localhost:8080). "
-             "Can also set via UNITY_MCP_HTTP_URL environment variable."
+        "Can also set via UNITY_MCP_HTTP_URL environment variable.",
     )
     parser.add_argument(
         "--http-host",
@@ -637,7 +711,7 @@ Examples:
         default=None,
         metavar="HOST",
         help="HTTP server host (overrides URL host). "
-             "Overrides UNITY_MCP_HTTP_HOST environment variable."
+        "Overrides UNITY_MCP_HTTP_HOST environment variable.",
     )
     parser.add_argument(
         "--http-port",
@@ -645,13 +719,13 @@ Examples:
         default=None,
         metavar="PORT",
         help="HTTP server port (overrides URL port). "
-             "Overrides UNITY_MCP_HTTP_PORT environment variable."
+        "Overrides UNITY_MCP_HTTP_PORT environment variable.",
     )
     parser.add_argument(
         "--http-remote-hosted",
         action="store_true",
         help="Treat HTTP transport as remotely hosted (forces explicit Unity instance selection). "
-             "Can also set via UNITY_MCP_HTTP_REMOTE_HOSTED=true."
+        "Can also set via UNITY_MCP_HTTP_REMOTE_HOSTED=true.",
     )
     parser.add_argument(
         "--api-key-validation-url",
@@ -659,8 +733,8 @@ Examples:
         default=None,
         metavar="URL",
         help="External URL to validate API keys (POST with {'api_key': '...'}). "
-             "Required when --http-remote-hosted is set. "
-             "Can also set via UNITY_MCP_API_KEY_VALIDATION_URL."
+        "Required when --http-remote-hosted is set. "
+        "Can also set via UNITY_MCP_API_KEY_VALIDATION_URL.",
     )
     parser.add_argument(
         "--api-key-login-url",
@@ -668,8 +742,8 @@ Examples:
         default=None,
         metavar="URL",
         help="URL where users can obtain/manage API keys. "
-             "Returned by /api/auth/login-url endpoint. "
-             "Can also set via UNITY_MCP_API_KEY_LOGIN_URL."
+        "Returned by /api/auth/login-url endpoint. "
+        "Can also set via UNITY_MCP_API_KEY_LOGIN_URL.",
     )
     parser.add_argument(
         "--api-key-cache-ttl",
@@ -677,7 +751,7 @@ Examples:
         default=300.0,
         metavar="SECONDS",
         help="Cache TTL for validated API keys in seconds (default: 300). "
-             "Can also set via UNITY_MCP_API_KEY_CACHE_TTL."
+        "Can also set via UNITY_MCP_API_KEY_CACHE_TTL.",
     )
     parser.add_argument(
         "--api-key-service-token-header",
@@ -685,7 +759,7 @@ Examples:
         default=None,
         metavar="HEADER",
         help="Header name for service token sent to validation endpoint (e.g. X-Service-Token). "
-             "Can also set via UNITY_MCP_API_KEY_SERVICE_TOKEN_HEADER."
+        "Can also set via UNITY_MCP_API_KEY_SERVICE_TOKEN_HEADER.",
     )
     parser.add_argument(
         "--api-key-service-token",
@@ -693,7 +767,7 @@ Examples:
         default=None,
         metavar="TOKEN",
         help="Service token value sent to validation endpoint for server authentication. "
-             "WARNING: Prefer UNITY_MCP_API_KEY_SERVICE_TOKEN env var in production to avoid process listing exposure."
+        "WARNING: Prefer UNITY_MCP_API_KEY_SERVICE_TOKEN env var in production to avoid process listing exposure.",
     )
     parser.add_argument(
         "--unity-instance-token",
@@ -701,7 +775,7 @@ Examples:
         default=None,
         metavar="TOKEN",
         help="Optional per-launch token set by Unity for deterministic lifecycle management. "
-             "Used by Unity to validate it is stopping the correct process."
+        "Used by Unity to validate it is stopping the correct process.",
     )
     parser.add_argument(
         "--pidfile",
@@ -709,13 +783,13 @@ Examples:
         default=None,
         metavar="PATH",
         help="Optional path where the server will write its PID on startup. "
-             "Used by Unity to stop the exact process it launched when running in a terminal."
+        "Used by Unity to stop the exact process it launched when running in a terminal.",
     )
     parser.add_argument(
         "--project-scoped-tools",
         action="store_true",
         help="Keep custom tools scoped to the active Unity project and enable the custom tools resource. "
-             "Can also set via UNITY_MCP_PROJECT_SCOPED_TOOLS=true."
+        "Can also set via UNITY_MCP_PROJECT_SCOPED_TOOLS=true.",
     )
 
     args = parser.parse_args()
@@ -724,26 +798,25 @@ Examples:
     if args.default_instance:
         os.environ["UNITY_MCP_DEFAULT_INSTANCE"] = args.default_instance
         logger.info(
-            f"Using default Unity instance from command-line: {args.default_instance}")
+            f"Using default Unity instance from command-line: {args.default_instance}"
+        )
 
     # Set transport mode
     config.transport_mode = args.transport or os.environ.get(
-        "UNITY_MCP_TRANSPORT", "stdio")
+        "UNITY_MCP_TRANSPORT", "stdio"
+    )
     logger.info(f"Transport mode: {config.transport_mode}")
 
-    config.http_remote_hosted = (
-        bool(args.http_remote_hosted)
-        or os.environ.get("UNITY_MCP_HTTP_REMOTE_HOSTED", "").lower() in ("true", "1", "yes", "on")
-    )
+    config.http_remote_hosted = bool(args.http_remote_hosted) or os.environ.get(
+        "UNITY_MCP_HTTP_REMOTE_HOSTED", ""
+    ).lower() in ("true", "1", "yes", "on")
 
     # API key authentication configuration
-    config.api_key_validation_url = (
-        args.api_key_validation_url
-        or os.environ.get("UNITY_MCP_API_KEY_VALIDATION_URL")
+    config.api_key_validation_url = args.api_key_validation_url or os.environ.get(
+        "UNITY_MCP_API_KEY_VALIDATION_URL"
     )
-    config.api_key_login_url = (
-        args.api_key_login_url
-        or os.environ.get("UNITY_MCP_API_KEY_LOGIN_URL")
+    config.api_key_login_url = args.api_key_login_url or os.environ.get(
+        "UNITY_MCP_API_KEY_LOGIN_URL"
     )
     try:
         cache_ttl_env = os.environ.get("UNITY_MCP_API_KEY_CACHE_TTL")
@@ -751,9 +824,7 @@ Examples:
             float(cache_ttl_env) if cache_ttl_env else args.api_key_cache_ttl
         )
     except ValueError:
-        logger.warning(
-            "Invalid UNITY_MCP_API_KEY_CACHE_TTL value, using default 300.0"
-        )
+        logger.warning("Invalid UNITY_MCP_API_KEY_CACHE_TTL value, using default 300.0")
         config.api_key_cache_ttl = 300.0
 
     # Service token for authenticating to validation endpoint
@@ -761,13 +832,16 @@ Examples:
         args.api_key_service_token_header
         or os.environ.get("UNITY_MCP_API_KEY_SERVICE_TOKEN_HEADER")
     )
-    config.api_key_service_token = (
-        args.api_key_service_token
-        or os.environ.get("UNITY_MCP_API_KEY_SERVICE_TOKEN")
+    config.api_key_service_token = args.api_key_service_token or os.environ.get(
+        "UNITY_MCP_API_KEY_SERVICE_TOKEN"
     )
 
     # Validate: remote-hosted HTTP mode requires API key validation URL
-    if config.http_remote_hosted and config.transport_mode == "http" and not config.api_key_validation_url:
+    if (
+        config.http_remote_hosted
+        and config.transport_mode == "http"
+        and not config.api_key_validation_url
+    ):
         logger.error(
             "--http-remote-hosted requires --api-key-validation-url or "
             "UNITY_MCP_API_KEY_VALIDATION_URL environment variable"
@@ -778,8 +852,12 @@ Examples:
     parsed_url = urlparse(http_url)
 
     # Allow individual host/port to override URL components
-    http_host = args.http_host or os.environ.get(
-        "UNITY_MCP_HTTP_HOST") or parsed_url.hostname or "localhost"
+    http_host = (
+        args.http_host
+        or os.environ.get("UNITY_MCP_HTTP_HOST")
+        or parsed_url.hostname
+        or "localhost"
+    )
 
     # Safely parse optional environment port (may be None or non-numeric)
     _env_port_str = os.environ.get("UNITY_MCP_HTTP_PORT")
@@ -787,7 +865,8 @@ Examples:
         _env_port = int(_env_port_str) if _env_port_str is not None else None
     except ValueError:
         logger.warning(
-            "Invalid UNITY_MCP_HTTP_PORT value '%s', ignoring", _env_port_str)
+            "Invalid UNITY_MCP_HTTP_PORT value '%s', ignoring", _env_port_str
+        )
         _env_port = None
 
     http_port = args.http_port or _env_port or parsed_url.port or 8080
@@ -806,8 +885,7 @@ Examples:
             with open(args.pidfile, "w", encoding="ascii") as f:
                 f.write(str(os.getpid()))
         except Exception as exc:
-            logger.warning(
-                "Failed to write pidfile '%s': %s", args.pidfile, exc)
+            logger.warning("Failed to write pidfile '%s': %s", args.pidfile, exc)
 
     if args.http_url != "http://localhost:8080":
         logger.info(f"HTTP URL set to: {http_url}")
@@ -816,28 +894,31 @@ Examples:
     if args.http_port:
         logger.info(f"HTTP port override: {http_port}")
 
-    project_scoped_tools = (
-        bool(args.project_scoped_tools)
-        or os.environ.get("UNITY_MCP_PROJECT_SCOPED_TOOLS", "").lower() in ("true", "1", "yes", "on")
-    )
+    project_scoped_tools = bool(args.project_scoped_tools) or os.environ.get(
+        "UNITY_MCP_PROJECT_SCOPED_TOOLS", ""
+    ).lower() in ("true", "1", "yes", "on")
     mcp = create_mcp_server(project_scoped_tools)
 
     # Determine transport mode
-    if config.transport_mode == 'http':
+    if config.transport_mode == "http":
         # Use HTTP transport for FastMCP
-        transport = 'http'
+        transport = "http"
         # Use the parsed host and port from URL/args
         http_url = os.environ.get("UNITY_MCP_HTTP_URL", args.http_url)
         parsed_url = urlparse(http_url)
-        host = args.http_host or os.environ.get(
-            "UNITY_MCP_HTTP_HOST") or parsed_url.hostname or "localhost"
+        host = (
+            args.http_host
+            or os.environ.get("UNITY_MCP_HTTP_HOST")
+            or parsed_url.hostname
+            or "localhost"
+        )
         port = args.http_port or _env_port or parsed_url.port or 8080
         logger.info(f"Starting FastMCP with HTTP transport on {host}:{port}")
         mcp.run(transport=transport, host=host, port=port)
     else:
         # Use stdio transport for traditional MCP
         logger.info("Starting FastMCP with stdio transport")
-        mcp.run(transport='stdio')
+        mcp.run(transport="stdio")
 
 
 # Run the server

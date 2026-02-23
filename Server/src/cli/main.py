@@ -118,7 +118,7 @@ def cli(
     \b
     Examples:
         unity-mcp status
-        unity-mcp gameobject find "Player"
+        unity-mcp scene-obj list --tag Player
         unity-mcp scene hierarchy --format json
         unity-mcp editor play
 
@@ -250,9 +250,7 @@ def register_commands():
     optional_commands = [
         ("cli.commands.tool", "tool"),
         ("cli.commands.tool", "custom_tool"),
-        ("cli.commands.gameobject", "gameobject"),
         ("cli.commands.scene_obj", "scene_obj"),
-        ("cli.commands.component", "component"),
         ("cli.commands.scene", "scene"),
         ("cli.commands.asset", "asset"),
         ("cli.commands.script", "script"),

@@ -4,10 +4,13 @@ from .test_helpers import DummyContext
 
 
 @pytest.mark.asyncio
-async def test_manage_gameobject_uses_session_state(monkeypatch):
+async def test_scene_object_uses_session_state(monkeypatch):
     """Test that tools use session-stored active instance via middleware"""
 
-    from transport.unity_instance_middleware import UnityInstanceMiddleware, set_unity_instance_middleware
+    from transport.unity_instance_middleware import (
+        UnityInstanceMiddleware,
+        set_unity_instance_middleware,
+    )
 
     # Arrange: Initialize middleware and set a session-scoped active instance
     middleware = UnityInstanceMiddleware()
@@ -29,31 +32,35 @@ async def test_manage_gameobject_uses_session_state(monkeypatch):
         captured["instance_id"] = kwargs.get("instance_id")
         return {"success": True, "data": {}}
 
-    import services.tools.manage_gameobject as mg
+    import services.tools.scene_object as so
+
     monkeypatch.setattr(
-        "services.tools.manage_gameobject.async_send_command_with_retry",
+        "services.tools.scene_object.async_send_command_with_retry",
         fake_send,
     )
 
     # Act: call tool - should use session state from context
-    res = await mg.manage_gameobject(
+    res = await so.scene_object(
         ctx,
         action="create",
-        name="SessionSphere",
-        primitive_type="Sphere",
+        target="SessionSphere",
+        properties={"primitive_type": "Sphere"},
     )
 
     # Assert: uses session-stored instance
     assert res.get("success") is True
-    assert captured.get("command_type") == "manage_gameobject"
+    assert captured.get("command_type") == "scene_object"
     assert captured.get("instance_id") == "SessionProj@AAAA1111"
 
 
 @pytest.mark.asyncio
-async def test_manage_gameobject_without_active_instance(monkeypatch):
+async def test_scene_object_without_active_instance(monkeypatch):
     """Test that tools work with no active instance set (uses None/default)"""
 
-    from transport.unity_instance_middleware import UnityInstanceMiddleware, set_unity_instance_middleware
+    from transport.unity_instance_middleware import (
+        UnityInstanceMiddleware,
+        set_unity_instance_middleware,
+    )
 
     # Arrange: Initialize middleware with no active instance set
     middleware = UnityInstanceMiddleware()
@@ -69,18 +76,19 @@ async def test_manage_gameobject_without_active_instance(monkeypatch):
         captured["instance_id"] = kwargs.get("instance_id")
         return {"success": True, "data": {}}
 
-    import services.tools.manage_gameobject as mg
+    import services.tools.scene_object as so
+
     monkeypatch.setattr(
-        "services.tools.manage_gameobject.async_send_command_with_retry",
+        "services.tools.scene_object.async_send_command_with_retry",
         fake_send,
     )
 
     # Act: call without active instance
-    res = await mg.manage_gameobject(
+    res = await so.scene_object(
         ctx,
         action="create",
-        name="DefaultSphere",
-        primitive_type="Sphere",
+        target="DefaultSphere",
+        properties={"primitive_type": "Sphere"},
     )
 
     # Assert: uses None (connection pool will pick default)

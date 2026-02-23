@@ -18,17 +18,12 @@ def animation():
 @animation.command("play")
 @click.argument("target")
 @click.argument("state_name")
-@click.option(
-    "--layer", "-l",
-    default=0,
-    type=int,
-    help="Animator layer(TODO)."
-)
+@click.option("--layer", "-l", default=0, type=int, help="Animator layer(TODO).")
 @click.option(
     "--search-method",
     type=SEARCH_METHOD_CHOICE_BASIC,
     default=None,
-    help="How to find the target."
+    help="How to find the target.",
 )
 @handle_unity_errors
 def play(target: str, state_name: str, layer: int, search_method: Optional[str]):
@@ -41,20 +36,17 @@ def play(target: str, state_name: str, layer: int, search_method: Optional[str])
     """
     config = get_config()
 
-    # Set Animator parameter to trigger state
     params: dict[str, Any] = {
-        "action": "set_property",
+        "action": "set",
         "target": target,
-        "componentType": "Animator",
-        "property": "Play",
-        "value": state_name,
-        "layer": layer,
+        "component": "Animator",
+        "properties": {"Play": state_name, "layer": layer},
     }
 
     if search_method:
-        params["searchMethod"] = search_method
+        params["search_method"] = search_method
 
-    result = run_command("manage_components", params, config)
+    result = run_command("scene_object", params, config)
     click.echo(format_output(result, config.format))
 
 
@@ -63,11 +55,12 @@ def play(target: str, state_name: str, layer: int, search_method: Optional[str])
 @click.argument("param_name")
 @click.argument("value")
 @click.option(
-    "--type", "-t",
+    "--type",
+    "-t",
     "param_type",
     type=click.Choice(["float", "int", "bool", "trigger"]),
     default="float",
-    help="Parameter type."
+    help="Parameter type.",
 )
 def set_parameter(target: str, param_name: str, value: str, param_type: str):
     """Set an Animator parameter.
@@ -79,6 +72,5 @@ def set_parameter(target: str, param_name: str, value: str, param_type: str):
         unity-mcp animation set-parameter "Player" "Jump" "" --type trigger
     """
     config = get_config()
-    print_info(
-        "Animation parameter command - requires custom Unity implementation")
+    print_info("Animation parameter command - requires custom Unity implementation")
     click.echo(f"Would set {param_name}={value} ({param_type}) on {target}")

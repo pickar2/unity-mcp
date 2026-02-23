@@ -4,7 +4,6 @@ using UnityEngine.TestTools;
 using UnityEditor;
 using Newtonsoft.Json.Linq;
 using MCPForUnity.Editor.Tools;
-using MCPForUnity.Editor.Tools.GameObjects;
 using System;
 using System.IO;
 using System.Text.RegularExpressions;
@@ -90,8 +89,8 @@ namespace MCPForUnityTests.Editor.Tools
             Assert.IsTrue(createMatObj.Value<bool>("success"), createMatObj.ToString());
 
             // Create a sphere
-            var createGo = new JObject { ["action"] = "create", ["name"] = "MCPParamTestSphere", ["primitiveType"] = "Sphere" };
-            var createGoRes = ManageGameObject.HandleCommand(createGo);
+            var createGo = new JObject { ["action"] = "create", ["name"] = "MCPParamTestSphere", ["primitive"] = "Sphere" };
+            var createGoRes = SceneObject.HandleCommand(createGo);
             var createGoObj = createGoRes as JObject ?? JObject.FromObject(createGoRes);
             Assert.IsTrue(createGoObj.Value<bool>("success"), createGoObj.ToString());
 
@@ -102,12 +101,11 @@ namespace MCPForUnityTests.Editor.Tools
                 var compJson = compJsonObj.ToString(Newtonsoft.Json.Formatting.None);
                 var modify = new JObject
                 {
-                    ["action"] = "modify",
+                    ["action"] = "set",
                     ["target"] = "MCPParamTestSphere",
-                    ["searchMethod"] = "by_name",
                     ["componentProperties"] = compJson
                 };
-                var raw = ManageGameObject.HandleCommand(modify);
+                var raw = SceneObject.HandleCommand(modify);
                 var result = raw as JObject ?? JObject.FromObject(raw);
                 Assert.IsTrue(result.Value<bool>("success"), result.ToString());
 
@@ -262,20 +260,19 @@ namespace MCPForUnityTests.Editor.Tools
                 {
                     ["action"] = "create",
                     ["name"] = sphereName,
-                    ["primitiveType"] = "Sphere"
+                    ["primitive"] = "Sphere"
                 };
-                var sphereRaw = ManageGameObject.HandleCommand(createSphere);
+                var sphereRaw = SceneObject.HandleCommand(createSphere);
                 var sphereResult = sphereRaw as JObject ?? JObject.FromObject(sphereRaw);
                 Assert.IsTrue(sphereResult.Value<bool>("success"), $"Test 6 - Create sphere failed: {sphereResult}");
 
                 var modifySphere = new JObject
                 {
-                    ["action"] = "modify",
+                    ["action"] = "set",
                     ["target"] = sphereName,
-                    ["searchMethod"] = "by_name",
                     ["componentProperties"] = "{\"MeshRenderer\":{\"sharedMaterial\":\"" + matPath + "\"}}"
                 };
-                var sphereModifyRaw = ManageGameObject.HandleCommand(modifySphere);
+                var sphereModifyRaw = SceneObject.HandleCommand(modifySphere);
                 var sphereModifyResult = sphereModifyRaw as JObject ?? JObject.FromObject(sphereModifyRaw);
                 Assert.IsTrue(sphereModifyResult.Value<bool>("success"), $"Test 6 - Assign material failed: {sphereModifyResult}");
                 var sphere = GameObject.Find(sphereName);

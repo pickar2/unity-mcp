@@ -17,34 +17,33 @@ def lighting():
 @lighting.command("create")
 @click.argument("name")
 @click.option(
-    "--type", "-t",
+    "--type",
+    "-t",
     "light_type",
     type=click.Choice(["Directional", "Point", "Spot", "Area"]),
     default="Point",
-    help="Type of light to create."
+    help="Type of light to create.",
 )
 @click.option(
-    "--position", "-pos",
+    "--position",
+    "-pos",
     nargs=3,
     type=float,
     default=(0, 3, 0),
-    help="Position as X Y Z."
+    help="Position as X Y Z.",
 )
 @click.option(
-    "--color", "-c",
-    nargs=3,
-    type=float,
-    default=None,
-    help="Color as R G B (0-1)."
+    "--color", "-c", nargs=3, type=float, default=None, help="Color as R G B (0-1)."
 )
-@click.option(
-    "--intensity", "-i",
-    default=None,
-    type=float,
-    help="Light intensity."
-)
+@click.option("--intensity", "-i", default=None, type=float, help="Light intensity.")
 @handle_unity_errors
-def create(name: str, light_type: str, position: Tuple[float, float, float], color: Optional[Tuple[float, float, float]], intensity: Optional[float]):
+def create(
+    name: str,
+    light_type: str,
+    position: Tuple[float, float, float],
+    color: Optional[Tuple[float, float, float]],
+    intensity: Optional[float],
+):
     """Create a new light.
 
     \b
@@ -56,35 +55,46 @@ def create(name: str, light_type: str, position: Tuple[float, float, float], col
     config = get_config()
 
     # Step 1: Create empty GameObject with position
-    create_result = run_command("manage_gameobject", {
-        "action": "create",
-        "name": name,
-        "position": list(position),
-    }, config)
+    create_result = run_command(
+        "scene_object",
+        {
+            "action": "create",
+            "name": name,
+            "position": list(position),
+        },
+        config,
+    )
 
     if not (create_result.get("success")):
         click.echo(format_output(create_result, config.format))
         return
 
-    # Step 2: Add Light component using manage_components
-    add_result = run_command("manage_components", {
-        "action": "add",
-        "target": name,
-        "componentType": "Light",
-    }, config)
+    # Step 2: Add Light component
+    add_result = run_command(
+        "scene_object",
+        {
+            "action": "set",
+            "target": name,
+            "add_components": ["Light"],
+        },
+        config,
+    )
 
     if not add_result.get("success"):
         click.echo(format_output(add_result, config.format))
         return
 
-    # Step 3: Set light type using manage_components set_property
-    type_result = run_command("manage_components", {
-        "action": "set_property",
-        "target": name,
-        "componentType": "Light",
-        "property": "type",
-        "value": light_type,
-    }, config)
+    # Step 3: Set light type
+    type_result = run_command(
+        "scene_object",
+        {
+            "action": "set",
+            "target": name,
+            "component": "Light",
+            "properties": {"type": light_type},
+        },
+        config,
+    )
 
     if not type_result.get("success"):
         click.echo(format_output(type_result, config.format))
@@ -92,13 +102,18 @@ def create(name: str, light_type: str, position: Tuple[float, float, float], col
 
     # Step 4: Set color if provided
     if color:
-        color_result = run_command("manage_components", {
-            "action": "set_property",
-            "target": name,
-            "componentType": "Light",
-            "property": "color",
-            "value": {"r": color[0], "g": color[1], "b": color[2], "a": 1},
-        }, config)
+        color_result = run_command(
+            "scene_object",
+            {
+                "action": "set",
+                "target": name,
+                "component": "Light",
+                "properties": {
+                    "color": {"r": color[0], "g": color[1], "b": color[2], "a": 1}
+                },
+            },
+            config,
+        )
 
         if not color_result.get("success"):
             click.echo(format_output(color_result, config.format))
@@ -106,13 +121,16 @@ def create(name: str, light_type: str, position: Tuple[float, float, float], col
 
     # Step 5: Set intensity if provided
     if intensity is not None:
-        intensity_result = run_command("manage_components", {
-            "action": "set_property",
-            "target": name,
-            "componentType": "Light",
-            "property": "intensity",
-            "value": intensity,
-        }, config)
+        intensity_result = run_command(
+            "scene_object",
+            {
+                "action": "set",
+                "target": name,
+                "component": "Light",
+                "properties": {"intensity": intensity},
+            },
+            config,
+        )
 
         if not intensity_result.get("success"):
             click.echo(format_output(intensity_result, config.format))

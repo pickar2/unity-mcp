@@ -15,7 +15,7 @@ namespace MCPForUnityTests.Editor.Tools.Characterization
     ///
     /// Based on analysis in: MCPForUnity/Editor/Tools/Tests/CHARACTERIZATION_SUMMARY.md
     ///
-    /// Sampled tools: ManageEditor, ManageMaterial, FindGameObjects, ManagePrefabs, ExecuteMenuItem
+    /// Sampled tools: ManageEditor, ManageMaterial, ManagePrefabs, ExecuteMenuItem
     /// </summary>
     [TestFixture]
     public class EditorToolsCharacterizationTests
@@ -38,17 +38,6 @@ namespace MCPForUnityTests.Editor.Tools.Characterization
             Assert.IsFalse((bool)jo["success"], "Should return error for null params");
             Assert.IsNotNull(jo["error"], "Should have error message");
             Assert.That((string)jo["error"], Does.Contain("cannot be null"), "Should indicate parameters are null");
-        }
-
-        [Test]
-        public void HandleCommand_FindGameObjects_WithNullParams_ReturnsErrorResponse()
-        {
-            // CURRENT BEHAVIOR: FindGameObjects DOES handle null params gracefully - returns ErrorResponse
-            // This is good design and should be preserved during refactoring.
-            var result = FindGameObjects.HandleCommand(null);
-            var jo = ToJO(result);
-            Assert.IsFalse((bool)jo["success"], "Should return error for null params");
-            Assert.IsNotNull(jo["error"], "Should have error message");
         }
 
         [Test]
@@ -80,58 +69,6 @@ namespace MCPForUnityTests.Editor.Tools.Characterization
         #endregion
 
         #region Section 2: Parameter Extraction and Validation
-
-        [Test]
-        public void HandleCommand_FindGameObjects_WithCamelCaseSearchMethod_Succeeds()
-        {
-            // Current behavior: Tools accept camelCase parameter names
-            var result = FindGameObjects.HandleCommand(new JObject
-            {
-                ["searchTerm"] = "TestObject",
-                ["searchMethod"] = "by_name"
-            });
-            var jo = ToJO(result);
-            // FindGameObjects should accept the parameter (may return empty results)
-            Assert.IsTrue((bool)jo["success"], "Should accept camelCase parameter");
-        }
-
-        [Test]
-        public void HandleCommand_FindGameObjects_WithSnakeCaseSearchMethod_Succeeds()
-        {
-            // Current behavior: Tools also accept snake_case parameter names
-            var result = FindGameObjects.HandleCommand(new JObject
-            {
-                ["searchTerm"] = "TestObject",
-                ["search_method"] = "by_name"
-            });
-            var jo = ToJO(result);
-            Assert.IsTrue((bool)jo["success"], "Should accept snake_case parameter");
-        }
-
-        [Test]
-        public void HandleCommand_FindGameObjects_WithoutSearchMethod_UsesDefault()
-        {
-            // Current behavior: searchMethod defaults to "by_name"
-            var result = FindGameObjects.HandleCommand(new JObject
-            {
-                ["searchTerm"] = "TestObject"
-            });
-            var jo = ToJO(result);
-            Assert.IsTrue((bool)jo["success"], "Should use default search method");
-        }
-
-        [Test]
-        public void HandleCommand_FindGameObjects_ClampsPageSizeToValidRange()
-        {
-            // Current behavior: pageSize is clamped to 1-500 range
-            var result = FindGameObjects.HandleCommand(new JObject
-            {
-                ["searchTerm"] = "TestObject",
-                ["pageSize"] = 1000  // Exceeds max
-            });
-            var jo = ToJO(result);
-            Assert.IsTrue((bool)jo["success"], "Should clamp and succeed");
-        }
 
         [Test]
         public void HandleCommand_ManageEditor_SetActiveTool_RequiresToolNameParameter()
@@ -350,62 +287,6 @@ namespace MCPForUnityTests.Editor.Tools.Characterization
 
         #region Section 7: Complex Parameter Handling and Object Resolution
 
-        [Test]
-        public void HandleCommand_FindGameObjects_ReturnsPaginationMetadata()
-        {
-            // Current behavior: FindGameObjects returns pagination info
-            var result = FindGameObjects.HandleCommand(new JObject
-            {
-                ["searchTerm"] = "*",
-                ["pageSize"] = 10
-            });
-            var jo = ToJO(result);
-            if ((bool)jo["success"])
-            {
-                var data = jo["data"];
-                // Pagination metadata should be present
-                Assert.IsNotNull(data, "Should have data field");
-            }
-        }
-
-        [Test]
-        public void HandleCommand_FindGameObjects_SearchMethodOptions()
-        {
-            // Current behavior: Supports multiple search methods
-            string[] methods = { "by_name", "by_path", "by_tag", "by_layer", "by_component" };
-            foreach (var method in methods)
-            {
-                var result = FindGameObjects.HandleCommand(new JObject
-                {
-                    ["searchTerm"] = "TestQuery",
-                    ["searchMethod"] = method
-                });
-                var jo = ToJO(result);
-                // All methods should be recognized and succeed
-                Assert.IsTrue((bool)jo["success"], $"Method {method} should be recognized and succeed");
-            }
-        }
-
-        [Test]
-        public void HandleCommand_FindGameObjects_PageSizeRange()
-        {
-            // Current behavior: pageSize clamped to 1-500
-            // Test with boundary values
-            var minResult = FindGameObjects.HandleCommand(new JObject
-            {
-                ["searchTerm"] = "Test",
-                ["pageSize"] = 0  // Should clamp to 1
-            });
-            var maxResult = FindGameObjects.HandleCommand(new JObject
-            {
-                ["searchTerm"] = "Test",
-                ["pageSize"] = 1000  // Should clamp to 500
-            });
-
-            Assert.IsNotNull(ToJO(minResult), "Should handle min boundary");
-            Assert.IsNotNull(ToJO(maxResult), "Should handle max boundary");
-        }
-
         #endregion
 
         #region Section 8: Security and Filtering
@@ -444,7 +325,6 @@ namespace MCPForUnityTests.Editor.Tools.Characterization
             var tools = new Func<JObject, object>[]
             {
                 p => ManageEditor.HandleCommand(p),
-                p => FindGameObjects.HandleCommand(p),
                 p => ManagePrefabs.HandleCommand(p),
                 p => ManageMaterial.HandleCommand(p),
                 p => ExecuteMenuItem.HandleCommand(p)
@@ -495,7 +375,6 @@ namespace MCPForUnityTests.Editor.Tools.Characterization
             var toolTypes = new[]
             {
                 typeof(ManageEditor),
-                typeof(FindGameObjects),
                 typeof(ManagePrefabs),
                 typeof(ManageMaterial),
                 typeof(ExecuteMenuItem)
@@ -536,18 +415,6 @@ namespace MCPForUnityTests.Editor.Tools.Characterization
             // Even if material doesn't exist, the color parsing should not throw
             var jo = ToJO(result);
             Assert.IsNotNull(jo, "Should handle color array format");
-        }
-
-        [Test]
-        public void HandleCommand_FindGameObjects_EmptyResultsAreValid()
-        {
-            // Current behavior: Finding no objects is a valid success case
-            var result = FindGameObjects.HandleCommand(new JObject
-            {
-                ["searchTerm"] = "DEFINITELY_NONEXISTENT_OBJECT_NAME_12345"
-            });
-            var jo = ToJO(result);
-            Assert.IsTrue((bool)jo["success"], "Empty results should still be success");
         }
 
         [Test]

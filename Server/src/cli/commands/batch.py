@@ -19,7 +19,9 @@ def batch():
 
 @batch.command("run")
 @click.argument("file", type=click.Path(exists=True))
-@click.option("--parallel", is_flag=True, help="Execute read-only commands in parallel.")
+@click.option(
+    "--parallel", is_flag=True, help="Execute read-only commands in parallel."
+)
 @click.option("--fail-fast", is_flag=True, help="Stop on first failure.")
 @handle_unity_errors
 def batch_run(file: str, parallel: bool, fail_fast: bool):
@@ -30,9 +32,9 @@ def batch_run(file: str, parallel: bool, fail_fast: bool):
     \\b
     File format:
         [
-            {"tool": "manage_gameobject", "params": {"action": "create", "name": "Cube1"}},
-            {"tool": "manage_gameobject", "params": {"action": "create", "name": "Cube2"}},
-            {"tool": "manage_components", "params": {"action": "add", "target": "Cube1", "componentType": "Rigidbody"}}
+            {"tool": "scene_object", "params": {"action": "create", "name": "Cube1"}},
+            {"tool": "scene_object", "params": {"action": "create", "name": "Cube2"}},
+            {"tool": "scene_object", "params": {"action": "add_component", "target": "Cube1", "componentType": "Rigidbody"}}
         ]
 
     \\b
@@ -44,7 +46,7 @@ def batch_run(file: str, parallel: bool, fail_fast: bool):
     config = get_config()
 
     try:
-        with open(file, 'r') as f:
+        with open(file, "r") as f:
             commands = json.load(f)
     except json.JSONDecodeError as e:
         print_error(f"Invalid JSON in file: {e}")
@@ -78,15 +80,16 @@ def batch_run(file: str, parallel: bool, fail_fast: bool):
         failed = len(results) - succeeded
 
         if failed == 0:
-            print_success(
-                f"All {succeeded} commands completed successfully")
+            print_success(f"All {succeeded} commands completed successfully")
         else:
             print_info(f"{succeeded} succeeded, {failed} failed")
 
 
 @batch.command("inline")
 @click.argument("commands_json")
-@click.option("--parallel", is_flag=True, help="Execute read-only commands in parallel.")
+@click.option(
+    "--parallel", is_flag=True, help="Execute read-only commands in parallel."
+)
 @click.option("--fail-fast", is_flag=True, help="Stop on first failure.")
 @handle_unity_errors
 def batch_inline(commands_json: str, parallel: bool, fail_fast: bool):
@@ -97,8 +100,8 @@ def batch_inline(commands_json: str, parallel: bool, fail_fast: bool):
         unity-mcp batch inline '[{"tool": "manage_scene", "params": {"action": "get_active"}}]'
 
         unity-mcp batch inline '[
-            {"tool": "manage_gameobject", "params": {"action": "create", "name": "A", "primitiveType": "Cube"}},
-            {"tool": "manage_gameobject", "params": {"action": "create", "name": "B", "primitiveType": "Sphere"}}
+            {"tool": "scene_object", "params": {"action": "create", "name": "A", "primitiveType": "Cube"}},
+            {"tool": "scene_object", "params": {"action": "create", "name": "B", "primitiveType": "Sphere"}}
         ]'
     """
     config = get_config()
@@ -130,41 +133,38 @@ def batch_template(output: Optional[str]):
         unity-mcp batch template -o my_batch.json
     """
     template = [
+        {"tool": "manage_scene", "params": {"action": "get_active"}},
         {
-            "tool": "manage_scene",
-            "params": {"action": "get_active"}
-        },
-        {
-            "tool": "manage_gameobject",
+            "tool": "scene_object",
             "params": {
                 "action": "create",
                 "name": "BatchCube",
                 "primitiveType": "Cube",
-                "position": [0, 1, 0]
-            }
+                "position": [0, 1, 0],
+            },
         },
         {
-            "tool": "manage_components",
+            "tool": "scene_object",
             "params": {
-                "action": "add",
+                "action": "add_component",
                 "target": "BatchCube",
-                "componentType": "Rigidbody"
-            }
+                "componentType": "Rigidbody",
+            },
         },
         {
-            "tool": "manage_gameobject",
+            "tool": "scene_object",
             "params": {
                 "action": "modify",
                 "target": "BatchCube",
-                "position": [0, 5, 0]
-            }
-        }
+                "position": [0, 5, 0],
+            },
+        },
     ]
 
     json_output = json.dumps(template, indent=2)
 
     if output:
-        with open(output, 'w') as f:
+        with open(output, "w") as f:
             f.write(json_output)
         print_success(f"Template written to: {output}")
     else:

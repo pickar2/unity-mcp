@@ -32,7 +32,7 @@ namespace MCPForUnityTests.Editor.Tools
             {
                 "manage_asset",
                 "manage_editor",
-                "manage_gameobject",
+                "scene_object",
                 "manage_scene",
                 "manage_script",
                 "manage_shader",

@@ -1,7 +1,6 @@
 using System;
 using System.IO;
 using MCPForUnity.Editor.Tools;
-using MCPForUnity.Editor.Tools.GameObjects;
 using Newtonsoft.Json.Linq;
 using NUnit.Framework;
 using UnityEditor;
@@ -114,9 +113,9 @@ namespace MCPForUnityTests.Editor.Tools
             {
                 ["action"] = "create",
                 ["name"] = "ToolTestSphere",
-                ["primitiveType"] = "Sphere"
+                ["primitive"] = "Sphere"
             };
-            var createGoResult = ToJObject(ManageGameObject.HandleCommand(createGo));
+            var createGoResult = ToJObject(SceneObject.HandleCommand(createGo));
             Assert.IsTrue(createGoResult.Value<bool>("success"), createGoResult.Value<string>("error"));
 
             _sphere = GameObject.Find("ToolTestSphere");

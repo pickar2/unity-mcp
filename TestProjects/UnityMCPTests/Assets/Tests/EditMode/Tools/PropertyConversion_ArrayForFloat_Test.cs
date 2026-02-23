@@ -44,14 +44,16 @@ namespace MCPForUnityTests.Editor.Tools
             // This is the exact error from issue #654
             var setPropertyParams = new JObject
             {
-                ["action"] = "set_property",
+                ["action"] = "set",
                 ["target"] = testGameObject.name,
-                ["componentType"] = "AudioSource",
-                ["property"] = "spatialBlend",
-                ["value"] = JArray.Parse("[0, 0]")  // Array for float = error
+                ["component"] = "AudioSource",
+                ["properties"] = new JObject
+                {
+                    ["spatialBlend"] = JArray.Parse("[0, 0]")  // Array for float = error
+                }
             };
 
-            var result = ManageComponents.HandleCommand(setPropertyParams);
+            var result = SceneObject.HandleCommand(setPropertyParams);
             Assert.IsNotNull(result, "Should return a result");
         }
     }

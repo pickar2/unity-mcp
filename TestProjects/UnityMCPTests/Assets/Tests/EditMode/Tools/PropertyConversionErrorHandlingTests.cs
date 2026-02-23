@@ -46,14 +46,16 @@ namespace MCPForUnityTests.Editor.Tools
             // Try to set AudioClip (object reference) to integer 12345
             var setPropertyParams = new JObject
             {
-                ["action"] = "set_property",
+                ["action"] = "set",
                 ["target"] = testGameObject.name,
-                ["componentType"] = "AudioSource",
-                ["property"] = "clip",
-                ["value"] = 12345  // INCOMPATIBLE: int for AudioClip
+                ["component"] = "AudioSource",
+                ["properties"] = new JObject
+                {
+                    ["clip"] = 12345  // INCOMPATIBLE: int for AudioClip
+                }
             };
 
-            var result = ManageComponents.HandleCommand(setPropertyParams);
+            var result = SceneObject.HandleCommand(setPropertyParams);
 
             // Main test: should return a result without crashing
             Assert.IsNotNull(result, "Should return a result, not crash dispatcher");
@@ -83,14 +85,16 @@ namespace MCPForUnityTests.Editor.Tools
             // This triggers: "Error converting token to System.Single: Error reading double. Unexpected token: StartArray"
             var setPropertyParams = new JObject
             {
-                ["action"] = "set_property",
+                ["action"] = "set",
                 ["target"] = testGameObject.name,
-                ["componentType"] = "AudioSource",
-                ["property"] = "spatialBlend",
-                ["value"] = JArray.Parse("[0, 0]")  // INCOMPATIBLE: array for float
+                ["component"] = "AudioSource",
+                ["properties"] = new JObject
+                {
+                    ["spatialBlend"] = JArray.Parse("[0, 0]")  // INCOMPATIBLE: array for float
+                }
             };
 
-            var result = ManageComponents.HandleCommand(setPropertyParams);
+            var result = SceneObject.HandleCommand(setPropertyParams);
 
             // Main test: dispatcher should remain responsive and return a result
             Assert.IsNotNull(result, "Should return a result, not crash dispatcher");
@@ -98,14 +102,16 @@ namespace MCPForUnityTests.Editor.Tools
             // Verify subsequent commands still work
             var followupParams = new JObject
             {
-                ["action"] = "set_property",
+                ["action"] = "set",
                 ["target"] = testGameObject.name,
-                ["componentType"] = "AudioSource",
-                ["property"] = "volume",
-                ["value"] = 0.5f
+                ["component"] = "AudioSource",
+                ["properties"] = new JObject
+                {
+                    ["volume"] = 0.5f
+                }
             };
 
-            var followupResult = ManageComponents.HandleCommand(followupParams);
+            var followupResult = SceneObject.HandleCommand(followupParams);
             Assert.IsNotNull(followupResult, "Dispatcher should still be responsive after conversion error");
         }
 
@@ -124,40 +130,46 @@ namespace MCPForUnityTests.Editor.Tools
             // First bad conversion attempt - int for AudioClip doesn't generate an error log
             var badParam1 = new JObject
             {
-                ["action"] = "set_property",
+                ["action"] = "set",
                 ["target"] = testGameObject.name,
-                ["componentType"] = "AudioSource",
-                ["property"] = "clip",
-                ["value"] = 999  // bad: int for AudioClip
+                ["component"] = "AudioSource",
+                ["properties"] = new JObject
+                {
+                    ["clip"] = 999  // bad: int for AudioClip
+                }
             };
 
-            var result1 = ManageComponents.HandleCommand(badParam1);
+            var result1 = SceneObject.HandleCommand(badParam1);
             Assert.IsNotNull(result1, "First call should return result");
 
             // Second bad conversion attempt - generates error log
             var badParam2 = new JObject
             {
-                ["action"] = "set_property",
+                ["action"] = "set",
                 ["target"] = testGameObject.name,
-                ["componentType"] = "AudioSource",
-                ["property"] = "rolloffFactor",
-                ["value"] = "invalid_string"  // bad: string for float
+                ["component"] = "AudioSource",
+                ["properties"] = new JObject
+                {
+                    ["rolloffFactor"] = "invalid_string"  // bad: string for float
+                }
             };
 
-            var result2 = ManageComponents.HandleCommand(badParam2);
+            var result2 = SceneObject.HandleCommand(badParam2);
             Assert.IsNotNull(result2, "Second call should return result");
 
             // Third attempt - valid conversion
             var badParam3 = new JObject
             {
-                ["action"] = "set_property",
+                ["action"] = "set",
                 ["target"] = testGameObject.name,
-                ["componentType"] = "AudioSource",
-                ["property"] = "volume",
-                ["value"] = 0.5f  // good: float for float - dispatcher should still work
+                ["component"] = "AudioSource",
+                ["properties"] = new JObject
+                {
+                    ["volume"] = 0.5f  // good: float for float - dispatcher should still work
+                }
             };
 
-            var result3 = ManageComponents.HandleCommand(badParam3);
+            var result3 = SceneObject.HandleCommand(badParam3);
             Assert.IsNotNull(result3, "Third call should return result (dispatcher should still be responsive)");
         }
 
@@ -173,27 +185,31 @@ namespace MCPForUnityTests.Editor.Tools
             // Trigger a conversion failure
             var failParam = new JObject
             {
-                ["action"] = "set_property",
+                ["action"] = "set",
                 ["target"] = testGameObject.name,
-                ["componentType"] = "AudioSource",
-                ["property"] = "clip",
-                ["value"] = 12345  // bad
+                ["component"] = "AudioSource",
+                ["properties"] = new JObject
+                {
+                    ["clip"] = 12345  // bad
+                }
             };
 
-            var failResult = ManageComponents.HandleCommand(failParam);
+            var failResult = SceneObject.HandleCommand(failParam);
             Assert.IsNotNull(failResult, "Should return result for failed conversion");
 
             // Now try a valid operation on the same component
             var validParam = new JObject
             {
-                ["action"] = "set_property",
+                ["action"] = "set",
                 ["target"] = testGameObject.name,
-                ["componentType"] = "AudioSource",
-                ["property"] = "volume",
-                ["value"] = 0.5f  // valid: float for float
+                ["component"] = "AudioSource",
+                ["properties"] = new JObject
+                {
+                    ["volume"] = 0.5f  // valid: float for float
+                }
             };
 
-            var validResult = ManageComponents.HandleCommand(validParam);
+            var validResult = SceneObject.HandleCommand(validParam);
             Assert.IsNotNull(validResult, "Should still be able to execute valid commands after conversion failure");
 
             // Verify the property was actually set
@@ -214,13 +230,15 @@ namespace MCPForUnityTests.Editor.Tools
             {
                 var badParam = new JObject
                 {
-                    ["action"] = "set_property",
+                    ["action"] = "set",
                     ["target"] = testGameObject.name,
-                    ["componentType"] = "AudioSource",
-                    ["property"] = "clip",
-                    ["value"] = i * 1000  // bad
+                    ["component"] = "AudioSource",
+                    ["properties"] = new JObject
+                    {
+                        ["clip"] = i * 1000  // bad
+                    }
                 };
-                ManageComponents.HandleCommand(badParam);
+                SceneObject.HandleCommand(badParam);
             }
 
             // Now check telemetry

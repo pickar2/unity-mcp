@@ -18,16 +18,12 @@ def audio():
 
 @audio.command("play")
 @click.argument("target")
-@click.option(
-    "--clip", "-c",
-    default=None,
-    help="Audio clip path to play."
-)
+@click.option("--clip", "-c", default=None, help="Audio clip path to play.")
 @click.option(
     "--search-method",
     type=SEARCH_METHOD_CHOICE_BASIC,
     default=None,
-    help="How to find the target."
+    help="How to find the target.",
 )
 @handle_unity_errors
 def play(target: str, clip: Optional[str], search_method: Optional[str]):
@@ -40,21 +36,21 @@ def play(target: str, clip: Optional[str], search_method: Optional[str]):
     """
     config = get_config()
 
+    properties: dict[str, Any] = {"Play": True}
+    if clip:
+        properties["clip"] = clip
+
     params: dict[str, Any] = {
-        "action": "set_property",
+        "action": "set",
         "target": target,
-        "componentType": "AudioSource",
-        "property": "Play",
-        "value": True,
+        "component": "AudioSource",
+        "properties": properties,
     }
 
-    if clip:
-        params["clip"] = clip
-
     if search_method:
-        params["searchMethod"] = search_method
+        params["search_method"] = search_method
 
-    result = run_command("manage_components", params, config)
+    result = run_command("scene_object", params, config)
     click.echo(format_output(result, config.format))
 
 
@@ -64,7 +60,7 @@ def play(target: str, clip: Optional[str], search_method: Optional[str]):
     "--search-method",
     type=SEARCH_METHOD_CHOICE_BASIC,
     default=None,
-    help="How to find the target."
+    help="How to find the target.",
 )
 @handle_unity_errors
 def stop(target: str, search_method: Optional[str]):
@@ -77,17 +73,16 @@ def stop(target: str, search_method: Optional[str]):
     config = get_config()
 
     params: dict[str, Any] = {
-        "action": "set_property",
+        "action": "set",
         "target": target,
-        "componentType": "AudioSource",
-        "property": "Stop",
-        "value": True,
+        "component": "AudioSource",
+        "properties": {"Stop": True},
     }
 
     if search_method:
-        params["searchMethod"] = search_method
+        params["search_method"] = search_method
 
-    result = run_command("manage_components", params, config)
+    result = run_command("scene_object", params, config)
     click.echo(format_output(result, config.format))
 
 
@@ -98,7 +93,7 @@ def stop(target: str, search_method: Optional[str]):
     "--search-method",
     type=SEARCH_METHOD_CHOICE_BASIC,
     default=None,
-    help="How to find the target."
+    help="How to find the target.",
 )
 @handle_unity_errors
 def volume(target: str, level: float, search_method: Optional[str]):
@@ -111,15 +106,14 @@ def volume(target: str, level: float, search_method: Optional[str]):
     config = get_config()
 
     params: dict[str, Any] = {
-        "action": "set_property",
+        "action": "set",
         "target": target,
-        "componentType": "AudioSource",
-        "property": "volume",
-        "value": level,
+        "component": "AudioSource",
+        "properties": {"volume": level},
     }
 
     if search_method:
-        params["searchMethod"] = search_method
+        params["search_method"] = search_method
 
-    result = run_command("manage_components", params, config)
+    result = run_command("scene_object", params, config)
     click.echo(format_output(result, config.format))

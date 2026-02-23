@@ -12,6 +12,7 @@ from cli.utils.config import get_config, CLIConfig
 
 class UnityConnectionError(Exception):
     """Raised when connection to Unity fails."""
+
     pass
 
 
@@ -63,7 +64,7 @@ def warn_if_remote_host(config: CLIConfig) -> None:
             "   The MCP CLI has no authentication. Anyone on the network could\n"
             "   intercept commands or send unauthorized commands to Unity.\n"
             "   Only proceed if you trust this network.\n",
-            err=True
+            err=True,
         )
 
 
@@ -76,7 +77,7 @@ async def send_command(
     """Send a command to Unity via the MCP HTTP server.
 
     Args:
-        command_type: The command type (e.g., 'manage_gameobject', 'manage_scene')
+        command_type: The command type (e.g., 'scene_object', 'manage_scene')
         params: Command parameters
         config: Optional CLI configuration
         timeout: Optional timeout override
