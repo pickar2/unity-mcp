@@ -11,6 +11,7 @@ Common workflows and patterns for effective Unity-MCP usage.
 - [Testing Workflows](#testing-workflows)
 - [Debugging Workflows](#debugging-workflows)
 - [GPU Debugging Workflows](#gpu-debugging-workflows)
+- [UI Creation Workflows](#ui-creation-workflows)
 - [Batch Operations](#batch-operations)
 
 ---
@@ -482,6 +483,332 @@ last_seq = state["latestSequenceId"]
 # 3. After some gameplay, poll for new entries only
 new_entries = read_console(since_sequence_id=last_seq)
 ```
+
+## UI Creation Workflows
+
+Unity UI (Canvas-based UGUI) requires specific component hierarchies. Use `batch_execute` with `fail_fast=True` to create complete UI elements in a single call.
+
+> **Template warning:** This section is a skill template library, not a guaranteed source of truth. Examples may be inaccurate for your Unity version, package setup, or project conventions.
+> **Use safely:**
+> 1. Validate component/property names against the current project.
+> 2. Prefer targeting by instance ID or full path over generic names.
+> 3. Assume complex controls (Slider/Toggle/TMP Input) may need extra reference wiring.
+> 4. Treat numeric enum values as placeholders and verify before reuse.
+
+### Create Canvas (Foundation for All UI)
+
+Every UI element must be under a Canvas. A Canvas requires three components: `Canvas`, `CanvasScaler`, and `GraphicRaycaster`.
+
+```python
+batch_execute(fail_fast=True, commands=[
+    {"tool": "scene_object", "params": {
+        "action": "create", "name": "MainCanvas",
+        "components": ["Canvas", "CanvasScaler", "GraphicRaycaster"],
+        "component_properties": {
+            "Canvas": {"renderMode": 0},
+            "CanvasScaler": {"uiScaleMode": 1, "referenceResolution": [1920, 1080]}
+        }
+    }}
+])
+# renderMode: 0=ScreenSpaceOverlay, 1=ScreenSpaceCamera, 2=WorldSpace
+```
+
+### Create EventSystem (Required Once Per Scene for UI Interaction)
+
+If no EventSystem exists in the scene, buttons and other interactive UI elements won't respond to input. Create one alongside your first Canvas.
+
+```python
+scene_object(
+    action="create", name="EventSystem",
+    components=[
+        "UnityEngine.EventSystems.EventSystem",
+        "UnityEngine.InputSystem.UI.InputSystemUIInputModule"
+    ]
+)
+```
+
+> **Note:** For projects using legacy Input Manager instead of Input System, use `"UnityEngine.EventSystems.StandaloneInputModule"` instead.
+
+### Create Panel (Background Container)
+
+A Panel is an Image component used as a background/container for other UI elements.
+
+```python
+scene_object(
+    action="create", name="MenuPanel", parent="MainCanvas",
+    components=["Image"],
+    component_properties={
+        "Image": {"color": [0.1, 0.1, 0.1, 0.8]}
+    }
+)
+```
+
+### Create Text (TextMeshPro)
+
+TextMeshProUGUI automatically adds a RectTransform when added to a child of a Canvas.
+
+```python
+scene_object(
+    action="create", name="TitleText", parent="MenuPanel",
+    components=["TextMeshProUGUI"],
+    component_properties={
+        "TextMeshProUGUI": {
+            "text": "My Game Title",
+            "fontSize": 48,
+            "alignment": 514,
+            "color": [1, 1, 1, 1]
+        }
+    }
+)
+```
+
+> **TextMeshPro alignment values:** 257=TopLeft, 258=TopCenter, 260=TopRight, 513=MiddleLeft, 514=MiddleCenter, 516=MiddleRight, 1025=BottomLeft, 1026=BottomCenter, 1028=BottomRight.
+
+### Create Button (With Label)
+
+A Button needs an `Image` (visual) + `Button` (interaction) on the parent, and a child with `TextMeshProUGUI` for the label.
+
+```python
+batch_execute(fail_fast=True, commands=[
+    # Button container with Image + Button components
+    {"tool": "scene_object", "params": {
+        "action": "create", "name": "StartButton", "parent": "MenuPanel",
+        "components": ["Image", "Button"],
+        "component_properties": {
+            "Image": {"color": [0.2, 0.6, 1.0, 1.0]}
+        }
+    }},
+    # Child text label
+    {"tool": "scene_object", "params": {
+        "action": "create", "name": "StartButton_Label", "parent": "StartButton",
+        "components": ["TextMeshProUGUI"],
+        "component_properties": {
+            "TextMeshProUGUI": {"text": "Start Game", "fontSize": 24, "alignment": 514}
+        }
+    }}
+])
+```
+
+### Create Slider
+
+A Slider requires a specific hierarchy: the slider root, a background, a fill area with fill, and a handle area with handle.
+
+```python
+batch_execute(fail_fast=True, commands=[
+    # Slider root
+    {"tool": "scene_object", "params": {
+        "action": "create", "name": "HealthSlider", "parent": "MainCanvas",
+        "components": ["Slider", "Image"]
+    }},
+    # Background
+    {"tool": "scene_object", "params": {
+        "action": "create", "name": "Background", "parent": "HealthSlider",
+        "components": ["Image"],
+        "component_properties": {
+            "Image": {"color": [0.3, 0.3, 0.3, 1.0]}
+        }
+    }},
+    # Fill Area + Fill
+    {"tool": "scene_object", "params": {
+        "action": "create", "name": "Fill Area", "parent": "HealthSlider"
+    }},
+    {"tool": "scene_object", "params": {
+        "action": "create", "name": "Fill", "parent": "Fill Area",
+        "components": ["Image"],
+        "component_properties": {
+            "Image": {"color": [0.2, 0.8, 0.2, 1.0]}
+        }
+    }},
+    # Handle Area + Handle
+    {"tool": "scene_object", "params": {
+        "action": "create", "name": "Handle Slide Area", "parent": "HealthSlider"
+    }},
+    {"tool": "scene_object", "params": {
+        "action": "create", "name": "Handle", "parent": "Handle Slide Area",
+        "components": ["Image"]
+    }}
+])
+```
+
+### Create Input Field (TextMeshPro)
+
+```python
+batch_execute(fail_fast=True, commands=[
+    {"tool": "scene_object", "params": {
+        "action": "create", "name": "NameInput", "parent": "MenuPanel",
+        "components": ["Image", "TMP_InputField"]
+    }},
+    # Text area child
+    {"tool": "scene_object", "params": {
+        "action": "create", "name": "Text Area", "parent": "NameInput",
+        "components": ["RectMask2D"]
+    }},
+    # Placeholder
+    {"tool": "scene_object", "params": {
+        "action": "create", "name": "Placeholder", "parent": "Text Area",
+        "components": ["TextMeshProUGUI"],
+        "component_properties": {
+            "TextMeshProUGUI": {"text": "Enter name...", "fontStyle": 2, "color": [0.5, 0.5, 0.5, 0.5]}
+        }
+    }},
+    # Actual text
+    {"tool": "scene_object", "params": {
+        "action": "create", "name": "Text", "parent": "Text Area",
+        "components": ["TextMeshProUGUI"]
+    }}
+])
+```
+
+### Create Toggle (Checkbox)
+
+```python
+batch_execute(fail_fast=True, commands=[
+    {"tool": "scene_object", "params": {
+        "action": "create", "name": "SoundToggle", "parent": "MenuPanel",
+        "components": ["Toggle"]
+    }},
+    # Background box
+    {"tool": "scene_object", "params": {
+        "action": "create", "name": "Background", "parent": "SoundToggle",
+        "components": ["Image"]
+    }},
+    # Checkmark
+    {"tool": "scene_object", "params": {
+        "action": "create", "name": "Checkmark", "parent": "Background",
+        "components": ["Image"]
+    }},
+    # Label
+    {"tool": "scene_object", "params": {
+        "action": "create", "name": "Label", "parent": "SoundToggle",
+        "components": ["TextMeshProUGUI"],
+        "component_properties": {
+            "TextMeshProUGUI": {"text": "Sound Effects", "fontSize": 18, "alignment": 513}
+        }
+    }}
+])
+```
+
+### Add Layout Group (Vertical/Horizontal/Grid)
+
+Layout groups auto-arrange child elements. Add to any container.
+
+```python
+# Vertical layout for a menu panel
+scene_object(
+    action="set", target="MenuPanel",
+    add_components=["VerticalLayoutGroup", "ContentSizeFitter"],
+    component_properties={
+        "VerticalLayoutGroup": {
+            "spacing": 10,
+            "childAlignment": 1,
+            "childForceExpandWidth": True,
+            "childForceExpandHeight": False
+        },
+        "ContentSizeFitter": {
+            "verticalFit": 2
+        }
+    }
+)
+```
+
+> **childAlignment values:** 0=UpperLeft, 1=UpperCenter, 2=UpperRight, 3=MiddleLeft, 4=MiddleCenter, 5=MiddleRight, 6=LowerLeft, 7=LowerCenter, 8=LowerRight.
+> **ContentSizeFitter fit modes:** 0=Unconstrained, 1=MinSize, 2=PreferredSize.
+
+### Complete Example: Main Menu Screen
+
+Combines multiple templates into a full menu screen in two batch calls (default 25 command limit per batch, configurable in Unity MCP Tools window up to 100).
+
+```python
+# Batch 1: Canvas + EventSystem + Panel + Title
+batch_execute(fail_fast=True, commands=[
+    # Canvas
+    {"tool": "scene_object", "params": {
+        "action": "create", "name": "MenuCanvas",
+        "components": ["Canvas", "CanvasScaler", "GraphicRaycaster"],
+        "component_properties": {
+            "Canvas": {"renderMode": 0},
+            "CanvasScaler": {"uiScaleMode": 1, "referenceResolution": [1920, 1080]}
+        }
+    }},
+    # EventSystem
+    {"tool": "scene_object", "params": {
+        "action": "create", "name": "EventSystem",
+        "components": ["UnityEngine.EventSystems.EventSystem", "UnityEngine.EventSystems.StandaloneInputModule"]
+    }},
+    # Panel with layout
+    {"tool": "scene_object", "params": {
+        "action": "create", "name": "MenuPanel", "parent": "MenuCanvas",
+        "components": ["Image", "VerticalLayoutGroup"],
+        "component_properties": {
+            "Image": {"color": [0.1, 0.1, 0.15, 0.9]},
+            "VerticalLayoutGroup": {"spacing": 20, "childAlignment": 4, "childForceExpandWidth": True, "childForceExpandHeight": False}
+        }
+    }},
+    # Title
+    {"tool": "scene_object", "params": {
+        "action": "create", "name": "Title", "parent": "MenuPanel",
+        "components": ["TextMeshProUGUI"],
+        "component_properties": {
+            "TextMeshProUGUI": {"text": "My Game", "fontSize": 64, "alignment": 514, "color": [1, 1, 1, 1]}
+        }
+    }}
+])
+
+# Batch 2: Buttons
+batch_execute(fail_fast=True, commands=[
+    # Play Button
+    {"tool": "scene_object", "params": {
+        "action": "create", "name": "PlayButton", "parent": "MenuPanel",
+        "components": ["Image", "Button"],
+        "component_properties": {"Image": {"color": [0.2, 0.6, 1.0, 1.0]}}
+    }},
+    {"tool": "scene_object", "params": {
+        "action": "create", "name": "PlayButton_Label", "parent": "PlayButton",
+        "components": ["TextMeshProUGUI"],
+        "component_properties": {"TextMeshProUGUI": {"text": "Play", "fontSize": 32, "alignment": 514}}
+    }},
+    # Settings Button
+    {"tool": "scene_object", "params": {
+        "action": "create", "name": "SettingsButton", "parent": "MenuPanel",
+        "components": ["Image", "Button"],
+        "component_properties": {"Image": {"color": [0.3, 0.3, 0.35, 1.0]}}
+    }},
+    {"tool": "scene_object", "params": {
+        "action": "create", "name": "SettingsButton_Label", "parent": "SettingsButton",
+        "components": ["TextMeshProUGUI"],
+        "component_properties": {"TextMeshProUGUI": {"text": "Settings", "fontSize": 32, "alignment": 514}}
+    }},
+    # Quit Button
+    {"tool": "scene_object", "params": {
+        "action": "create", "name": "QuitButton", "parent": "MenuPanel",
+        "components": ["Image", "Button"],
+        "component_properties": {"Image": {"color": [0.8, 0.2, 0.2, 1.0]}}
+    }},
+    {"tool": "scene_object", "params": {
+        "action": "create", "name": "QuitButton_Label", "parent": "QuitButton",
+        "components": ["TextMeshProUGUI"],
+        "component_properties": {"TextMeshProUGUI": {"text": "Quit", "fontSize": 32, "alignment": 514}}
+    }}
+])
+```
+
+### UI Component Quick Reference
+
+| UI Element | Required Components | Notes |
+| ---------- | ------------------- | ----- |
+| **Canvas** | Canvas + CanvasScaler + GraphicRaycaster | Root for all UI. One per screen. |
+| **EventSystem** | EventSystem + StandaloneInputModule (or InputSystemUIInputModule) | One per scene. Required for interaction. |
+| **Panel** | Image | Container. Set color for background. |
+| **Text** | TextMeshProUGUI | Auto-adds RectTransform under Canvas. |
+| **Button** | Image + Button + child(TextMeshProUGUI) | Image = visual, Button = click handler. |
+| **Image** | Image | Set sprite property for custom graphics. |
+| **Slider** | Slider + Image + children(Background, Fill Area/Fill, Handle Slide Area/Handle) | Complex hierarchy. |
+| **Toggle** | Toggle + children(Background/Checkmark, Label) | Checkbox/radio button. |
+| **Input Field** | Image + TMP_InputField + children(Text Area/Placeholder/Text) | Text input. |
+| **Scroll View** | ScrollRect + Image + children(Viewport/Content, Scrollbar) | Scrollable container. |
+| **Dropdown** | Image + TMP_Dropdown + children(Label, Arrow, Template) | Selection menu. |
+| **Layout Group** | VerticalLayoutGroup / HorizontalLayoutGroup / GridLayoutGroup | Add to any container to auto-arrange children. |
+
 
 ---
 

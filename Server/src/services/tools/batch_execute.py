@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 from typing import Annotated, Any
 
 from fastmcp import Context
@@ -12,26 +13,68 @@ from services.tools import get_unity_instance_from_context
 from transport.unity_transport import send_with_unity_instance
 from transport.legacy.unity_connection import async_send_command_with_retry
 
-MAX_COMMANDS_PER_BATCH = 25
+logger = logging.getLogger(__name__)
+
+# Fallback used when the Unity-side configured limit is not yet known.
+DEFAULT_MAX_COMMANDS_PER_BATCH = 25
+
+# Hard ceiling matching the C# AbsoluteMaxCommandsPerBatch.
+ABSOLUTE_MAX_COMMANDS_PER_BATCH = 100
+
+# Module-level cache for the Unity-configured limit (populated from editor state).
+_cached_max_commands: int | None = None
+
+
+async def _get_max_commands_from_editor_state(ctx: Context) -> int:
+    """
+    Attempt to read the configured batch limit from the Unity editor state.
+    Falls back to DEFAULT_MAX_COMMANDS_PER_BATCH if unavailable.
+    """
+    global _cached_max_commands
+    if _cached_max_commands is not None:
+        return _cached_max_commands
+
+    try:
+        from services.resources.editor_state import get_editor_state
+
+        state_resp = await get_editor_state(ctx)
+        data = (
+            state_resp.data
+            if hasattr(state_resp, "data")
+            else (state_resp.get("data") if isinstance(state_resp, dict) else None)
+        )
+        if isinstance(data, dict):
+            settings = data.get("settings")
+            if isinstance(settings, dict):
+                limit = settings.get("batch_execute_max_commands")
+                if (
+                    isinstance(limit, int)
+                    and 1 <= limit <= ABSOLUTE_MAX_COMMANDS_PER_BATCH
+                ):
+                    _cached_max_commands = limit
+                    return limit
+    except Exception as exc:
+        logger.debug("Could not read batch limit from editor state: %s", exc)
+
+    return DEFAULT_MAX_COMMANDS_PER_BATCH
+
+
+def invalidate_cached_max_commands() -> None:
+    """Reset the cached limit so the next call re-reads from editor state."""
+    global _cached_max_commands
+    _cached_max_commands = None
 
 
 @mcp_for_unity_tool(
     name="batch_execute",
-    description="""Execute multiple MCP commands in ONE call. BLOCKING - waits for all commands to complete.
-
-STRONGLY RECOMMENDED for:
-- Creating/modifying multiple objects
-- Adding components to multiple targets
-- Any repetitive operations
-
-Benefits: 10-100x faster than sequential calls. Max 25 commands per batch.
-
-Example: Instead of 5 separate scene_object calls to create 5 cubes, use 1 batch_execute with 5 commands.
-
-Options:
-- commands: List of {tool: 'tool_name', params: {...}} objects
-- parallel: Run read-only commands in parallel
-- fail_fast: Stop on first failure""",
+    description=(
+        "Executes multiple MCP commands in a single batch for dramatically better performance. "
+        "STRONGLY RECOMMENDED when creating/modifying multiple objects, adding components to multiple targets, "
+        "or performing any repetitive operations. Reduces latency and token costs by 10-100x compared to "
+        "sequential tool calls. The max commands per batch is configurable in the Unity MCP Tools window "
+        f"(default {DEFAULT_MAX_COMMANDS_PER_BATCH}, hard max {ABSOLUTE_MAX_COMMANDS_PER_BATCH}). "
+        "Example: creating 5 cubes → use 1 batch_execute with 5 create commands instead of 5 separate calls."
+    ),
     annotations=ToolAnnotations(
         title="Batch Execute",
         destructiveHint=True,
@@ -58,9 +101,10 @@ async def batch_execute(
             "'commands' must be a non-empty list of command specifications"
         )
 
-    if len(commands) > MAX_COMMANDS_PER_BATCH:
+    max_commands = await _get_max_commands_from_editor_state(ctx)
+    if len(commands) > max_commands:
         raise ValueError(
-            f"batch_execute currently supports up to {MAX_COMMANDS_PER_BATCH} commands; received {len(commands)}"
+            f"batch_execute supports up to {max_commands} commands (configured in Unity); received {len(commands)}"
         )
 
     normalized_commands: list[dict[str, Any]] = []
@@ -81,6 +125,13 @@ async def batch_execute(
         if not isinstance(params, dict):
             raise ValueError(
                 f"Command '{tool_name}' must specify parameters as an object/dict"
+            )
+
+        if "unity_instance" in params:
+            raise ValueError(
+                f"Command '{tool_name}' at index {index} contains 'unity_instance'. "
+                "Per-command instance routing is not supported inside batch_execute. "
+                "Set unity_instance on the outer batch_execute call to route the entire batch."
             )
 
         normalized_commands.append(

@@ -42,8 +42,9 @@ namespace MCPForUnity.Editor.Windows
             { EditorPrefKeys.CustomToolRegistrationEnabled, EditorPrefType.Bool },
             { EditorPrefKeys.TelemetryDisabled, EditorPrefType.Bool },
             { EditorPrefKeys.DevModeForceServerRefresh, EditorPrefType.Bool },
-            { EditorPrefKeys.UseBetaServer, EditorPrefType.Bool },
             { EditorPrefKeys.ProjectScopedToolsLocalHttp, EditorPrefType.Bool },
+            { EditorPrefKeys.AllowLanHttpBind, EditorPrefType.Bool },
+            { EditorPrefKeys.AllowInsecureRemoteHttp, EditorPrefType.Bool },
             
             // Integer prefs
             { EditorPrefKeys.UnitySocketPort, EditorPrefType.Int },
@@ -68,6 +69,7 @@ namespace MCPForUnity.Editor.Windows
             { EditorPrefKeys.PackageDeployLastTargetPath, EditorPrefType.String },
             { EditorPrefKeys.PackageDeployLastSourcePath, EditorPrefType.String },
             { EditorPrefKeys.ServerSrc, EditorPrefType.String },
+            { EditorPrefKeys.LastSelectedClientId, EditorPrefType.String },
             { EditorPrefKeys.LatestKnownVersion, EditorPrefType.String },
             { EditorPrefKeys.LastAssetStoreUpdateCheck, EditorPrefType.String },
             { EditorPrefKeys.LatestKnownAssetStoreVersion, EditorPrefType.String },

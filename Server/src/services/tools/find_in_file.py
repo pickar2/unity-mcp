@@ -26,7 +26,7 @@ def _split_uri(uri: str) -> tuple[str, str]:
     """
     raw_path: str
     if uri.startswith("mcpforunity://path/"):
-        raw_path = uri[len("mcpforunity://path/"):]
+        raw_path = uri[len("mcpforunity://path/") :]
     elif uri.startswith("file://"):
         parsed = urlparse(uri)
         host = (parsed.netloc or "").strip()
@@ -42,7 +42,12 @@ def _split_uri(uri: str) -> tuple[str, str]:
     # Percent-decode any residual encodings and normalize separators
     raw_path = unquote(raw_path).replace("\\", "/")
     # Strip leading slash only for Windows drive-letter forms like "/C:/..."
-    if os.name == "nt" and len(raw_path) >= 3 and raw_path[0] == "/" and raw_path[2] == ":":
+    if (
+        os.name == "nt"
+        and len(raw_path) >= 3
+        and raw_path[0] == "/"
+        and raw_path[2] == ":"
+    ):
         raw_path = raw_path[1:]
 
     # Normalize path (collapse ../, ./)
@@ -50,8 +55,7 @@ def _split_uri(uri: str) -> tuple[str, str]:
 
     # If an 'Assets' segment exists, compute path relative to it (case-insensitive)
     parts = [p for p in norm.split("/") if p not in ("", ".")]
-    idx = next((i for i, seg in enumerate(parts)
-                if seg.lower() == "assets"), None)
+    idx = next((i for i, seg in enumerate(parts) if seg.lower() == "assets"), None)
     assets_rel = "/".join(parts[idx:]) if idx is not None else None
 
     effective_path = assets_rel if assets_rel else norm
@@ -66,7 +70,8 @@ def _split_uri(uri: str) -> tuple[str, str]:
 
 
 @mcp_for_unity_tool(
-    description="Search a file with regex pattern. Returns matching line numbers and excerpts.",
+    unity_target="manage_script",
+    description="Searches a file with a regex pattern and returns line numbers and excerpts.",
     annotations=ToolAnnotations(
         title="Find in File",
         readOnlyHint=True,
@@ -74,17 +79,20 @@ def _split_uri(uri: str) -> tuple[str, str]:
 )
 async def find_in_file(
     ctx: Context,
-    uri: Annotated[str, "The resource URI to search under Assets/ or file path form supported by read_resource"],
+    uri: Annotated[
+        str,
+        "The resource URI to search under Assets/ or file path form supported by read_resource",
+    ],
     pattern: Annotated[str, "The regex pattern to search for"],
     project_root: Annotated[str | None, "Optional project root path"] = None,
     max_results: Annotated[int, "Cap results to avoid huge payloads"] = 200,
-    ignore_case: Annotated[bool | str | None,
-                           "Case insensitive search"] = True,
+    ignore_case: Annotated[bool | str | None, "Case insensitive search"] = True,
 ) -> dict[str, Any]:
     # project_root is currently unused but kept for interface consistency
     unity_instance = get_unity_instance_from_context(ctx)
     await ctx.info(
-        f"Processing find_in_file: {uri} (unity_instance={unity_instance or 'default'})")
+        f"Processing find_in_file: {uri} (unity_instance={unity_instance or 'default'})"
+    )
 
     name, directory = _split_uri(uri)
 
@@ -101,14 +109,19 @@ async def find_in_file(
     )
 
     if not isinstance(read_resp, dict) or not read_resp.get("success"):
-        return read_resp if isinstance(read_resp, dict) else {"success": False, "message": str(read_resp)}
+        return (
+            read_resp
+            if isinstance(read_resp, dict)
+            else {"success": False, "message": str(read_resp)}
+        )
 
     data = read_resp.get("data", {})
     contents = data.get("contents")
     if not contents and data.get("contentsEncoded") and data.get("encodedContents"):
         try:
-            contents = base64.b64decode(data.get("encodedContents", "").encode(
-                "utf-8")).decode("utf-8", "replace")
+            contents = base64.b64decode(
+                data.get("encodedContents", "").encode("utf-8")
+            ).decode("utf-8", "replace")
         except (ValueError, TypeError, base64.binascii.Error):
             contents = contents or ""
 
@@ -147,13 +160,13 @@ async def find_in_file(
 
         # Calculate line number
         # Count newlines up to start_idx
-        line_num = contents.count('\n', 0, start_idx) + 1
+        line_num = contents.count("\n", 0, start_idx) + 1
 
         # Get line content for excerpt
         # Find start of line
-        line_start = contents.rfind('\n', 0, start_idx) + 1
+        line_start = contents.rfind("\n", 0, start_idx) + 1
         # Find end of line
-        line_end = contents.find('\n', start_idx)
+        line_end = contents.find("\n", start_idx)
         if line_end == -1:
             line_end = len(contents)
 
@@ -162,13 +175,15 @@ async def find_in_file(
         # Create excerpt
         # We can just return the line content as excerpt
 
-        results.append({
-            "line": line_num,
-            "content": line_content.strip(),  # detailed match info?
-            "match": m.group(0),
-            "start": start_idx,
-            "end": end_idx
-        })
+        results.append(
+            {
+                "line": line_num,
+                "content": line_content.strip(),  # detailed match info?
+                "match": m.group(0),
+                "start": start_idx,
+                "end": end_idx,
+            }
+        )
         count += 1
 
     return {
@@ -176,6 +191,6 @@ async def find_in_file(
         "data": {
             "matches": results,
             "count": len(results),
-            "total_matches": len(found)
-        }
+            "total_matches": len(found),
+        },
     }

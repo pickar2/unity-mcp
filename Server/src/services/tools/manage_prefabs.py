@@ -21,7 +21,13 @@ REQUIRED_PARAMS = {
 
 
 @mcp_for_unity_tool(
-    description="""Manage Unity Prefab assets via headless operations (no UI).
+    description="""Manage Unity Prefab assets via headless operations (no UI, no prefab stages).
+
+Actions: get_info, get_hierarchy, create_from_gameobject, modify_contents.
+Use modify_contents for headless prefab editing - ideal for automated workflows.
+Use create_child parameter with modify_contents to add child GameObjects to a prefab (single object or array for batch creation in one save).
+Use component_properties with modify_contents to set serialized fields on existing components (e.g. component_properties={"Rigidbody": {"mass": 5.0}, "MyScript": {"health": 100}}).
+Supports object references via {"guid": "..."}, {"path": "Assets/..."}, or {"instanceID": 123}.
 
 Examples:
   manage_prefabs(action="get_info", prefab_path="Assets/Prefabs/Player.prefab")
@@ -29,6 +35,7 @@ Examples:
   manage_prefabs(action="create_from_gameobject", target="Player", prefab_path="Assets/Prefabs/Player.prefab")
   manage_prefabs(action="modify_contents", prefab_path="Assets/Prefabs/Player.prefab", target="Body", position=[0,1,0])
   manage_prefabs(action="modify_contents", prefab_path="Assets/Prefabs/Player.prefab", create_child={"name": "Shield", "primitive_type": "Cube", "scale": [0.5,1,0.1]})
+  manage_prefabs(action="modify_contents", prefab_path="Assets/Prefabs/Player.prefab", target="Body", component_properties={"Rigidbody": {"mass": 5.0}})
 
 Use manage_asset(action="search", filter_type="Prefab") to find prefabs.""",
     annotations=ToolAnnotations(
@@ -102,6 +109,11 @@ async def manage_prefabs(
     create_child: Annotated[
         dict[str, Any] | list[dict[str, Any]],
         "Create child GameObject(s) in the prefab. Single object or array of objects, each with: name (required), parent (optional, defaults to target), primitive_type (optional: Cube, Sphere, Capsule, Cylinder, Plane, Quad), position, rotation, scale, components_to_add, tag, layer, set_active.",
+    ]
+    | None = None,
+    component_properties: Annotated[
+        dict[str, dict[str, Any]],
+        'Set properties on existing components in modify_contents. Keys are component type names, values are dicts of property name to value. Example: {"Rigidbody": {"mass": 5.0}, "MyScript": {"health": 100}}. Supports object references via {"guid": "..."}, {"path": "Assets/..."}, or {"instanceID": 123}.',
     ]
     | None = None,
 ) -> dict[str, Any]:
@@ -187,6 +199,8 @@ async def manage_prefabs(
             params["componentsToAdd"] = components_to_add
         if components_to_remove is not None:
             params["componentsToRemove"] = components_to_remove
+        if component_properties is not None:
+            params["componentProperties"] = component_properties
         if create_child is not None:
             # Normalize vector fields within create_child (handles single object or array)
             def normalize_child_params(

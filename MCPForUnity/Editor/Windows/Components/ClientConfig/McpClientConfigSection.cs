@@ -103,18 +103,10 @@ namespace MCPForUnity.Editor.Windows.Components.ClientConfig
             {
                 // Restore last selected client from EditorPrefs
                 string lastClientId = EditorPrefs.GetString(EditorPrefKeys.LastSelectedClientId, string.Empty);
-                int restoredIndex = 0;
-                if (!string.IsNullOrEmpty(lastClientId))
-                {
-                    for (int i = 0; i < configurators.Count; i++)
-                    {
-                        if (string.Equals(configurators[i].Id, lastClientId, StringComparison.OrdinalIgnoreCase))
-                        {
-                            restoredIndex = i;
-                            break;
-                        }
-                    }
-                }
+                int restoredIndex = FindConfiguratorIndex(lastClientId);
+                if (restoredIndex < 0)
+                    restoredIndex = 0;
+
                 clientDropdown.index = restoredIndex;
                 selectedClientIndex = restoredIndex;
             }
@@ -131,7 +123,17 @@ namespace MCPForUnity.Editor.Windows.Components.ClientConfig
         {
             clientDropdown.RegisterValueChangedCallback(evt =>
             {
-                selectedClientIndex = clientDropdown.index;
+                int selectedIndex = GetIndexForDropdownValue(evt.newValue);
+                if (selectedIndex < 0)
+                {
+                    selectedIndex = clientDropdown.index;
+                }
+                if (selectedIndex < 0 || selectedIndex >= configurators.Count)
+                {
+                    return;
+                }
+
+                selectedClientIndex = selectedIndex;
                 // Persist the selected client so it's restored on next window open
                 if (selectedClientIndex >= 0 && selectedClientIndex < configurators.Count)
                 {
@@ -302,7 +304,7 @@ namespace MCPForUnity.Editor.Windows.Components.ClientConfig
             string httpUrl = HttpEndpointUtility.GetMcpRpcUrl();
             var (uvxPath, _, packageName) = AssetPathUtility.GetUvxCommandParts();
             string fromArgs = AssetPathUtility.GetBetaServerFromArgs(quoteFromPath: true);
-            bool shouldForceRefresh = AssetPathUtility.ShouldForceUvxRefresh();
+            string uvxDevFlags = AssetPathUtility.GetUvxDevFlags();
             string apiKey = EditorPrefs.GetString(EditorPrefKeys.ApiKey, string.Empty);
 
             // Compute pathPrepend on main thread
@@ -329,7 +331,7 @@ namespace MCPForUnity.Editor.Windows.Components.ClientConfig
                         cliConfigurator.ConfigureWithCapturedValues(
                             projectDir, claudePath, pathPrepend,
                             useHttpTransport, httpUrl,
-                            uvxPath, fromArgs, packageName, shouldForceRefresh,
+                            uvxPath, fromArgs, packageName, uvxDevFlags,
                             apiKey, serverTransport);
                     }
                     return (success: true, error: (string)null);
@@ -488,8 +490,8 @@ namespace MCPForUnity.Editor.Windows.Components.ClientConfig
                 string claudePath = MCPServiceLocator.Paths.GetClaudeCliPath();
                 RuntimePlatform platform = Application.platform;
                 bool isRemoteScope = HttpEndpointUtility.IsRemoteScope();
-                // Get expected package source considering beta mode (bypass cache for fresh read)
-                string expectedPackageSource = GetExpectedPackageSourceForBetaMode();
+                // Get expected package source based on installed package version and overrides.
+                string expectedPackageSource = GetExpectedPackageSourceForCurrentPackage();
 
                 Task.Run(() =>
                 {
@@ -619,39 +621,72 @@ namespace MCPForUnity.Editor.Windows.Components.ClientConfig
         }
 
         /// <summary>
-        /// Gets the expected package source for validation, accounting for beta mode.
+        /// Gets the expected package source for validation based on installed package version.
         /// Uses the same logic as registration to ensure validation matches what was registered.
         /// MUST be called from the main thread due to EditorPrefs access.
         /// </summary>
-        private static string GetExpectedPackageSourceForBetaMode()
+        private static string GetExpectedPackageSourceForCurrentPackage()
         {
-            // Check for explicit override first
-            string gitUrlOverride = EditorPrefs.GetString(EditorPrefKeys.GitUrlOverride, "");
-            if (!string.IsNullOrEmpty(gitUrlOverride))
-            {
-                return gitUrlOverride;
-            }
-
-            // Check beta mode using the same logic as GetUseBetaServerWithDynamicDefault
-            // (bypass cache to ensure fresh read)
-            bool useBetaServer;
-            if (EditorPrefs.HasKey(EditorPrefKeys.UseBetaServer))
-            {
-                useBetaServer = EditorPrefs.GetBool(EditorPrefKeys.UseBetaServer, false);
-            }
-            else
-            {
-                // Dynamic default based on package version
-                useBetaServer = AssetPathUtility.IsPreReleaseVersion();
-            }
-
-            if (useBetaServer)
-            {
-                return "mcpforunityserver>=0.0.0a0";
-            }
-
-            // Standard mode uses exact version from package.json
             return AssetPathUtility.GetMcpServerPackageSource();
+        }
+
+        private int FindConfiguratorIndex(string persistedClientValue)
+        {
+            if (string.IsNullOrWhiteSpace(persistedClientValue))
+                return -1;
+
+            // Primary match: stored stable ID.
+            for (int i = 0; i < configurators.Count; i++)
+            {
+                if (string.Equals(configurators[i].Id, persistedClientValue, StringComparison.OrdinalIgnoreCase))
+                    return i;
+            }
+
+            // Compatibility match for older persisted values (e.g., display names with spaces).
+            string normalized = NormalizeClientToken(persistedClientValue);
+            if (string.IsNullOrEmpty(normalized))
+                return -1;
+
+            for (int i = 0; i < configurators.Count; i++)
+            {
+                if (NormalizeClientToken(configurators[i].Id) == normalized ||
+                    NormalizeClientToken(configurators[i].DisplayName) == normalized)
+                {
+                    return i;
+                }
+            }
+
+            return -1;
+        }
+
+        private int GetIndexForDropdownValue(string dropdownValue)
+        {
+            if (string.IsNullOrWhiteSpace(dropdownValue))
+                return -1;
+
+            int directIndex = clientDropdown.choices?.IndexOf(dropdownValue) ?? -1;
+            if (directIndex >= 0 && directIndex < configurators.Count)
+                return directIndex;
+
+            string normalized = NormalizeClientToken(dropdownValue);
+            if (string.IsNullOrEmpty(normalized))
+                return -1;
+
+            for (int i = 0; i < configurators.Count; i++)
+            {
+                if (NormalizeClientToken(configurators[i].DisplayName) == normalized)
+                    return i;
+            }
+
+            return -1;
+        }
+
+        private static string NormalizeClientToken(string value)
+        {
+            if (string.IsNullOrWhiteSpace(value))
+                return string.Empty;
+
+            return new string(value.Where(char.IsLetterOrDigit).ToArray()).ToLowerInvariant();
         }
     }
 }

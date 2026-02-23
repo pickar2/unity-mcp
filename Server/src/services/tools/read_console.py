@@ -27,15 +27,12 @@ Options:
 - action: 'get' (default) or 'clear'
 - types: ['error', 'warning', 'log', 'all'] - message types to include
 - count: Max messages (default 100). Use page_size/cursor for pagination.
-- since_sequence_id: Only return entries after this sequence ID (for efficient polling)
-- since_timestamp: Only return entries after this ISO 8601 timestamp
-- filter_regex: Regex filter (case-insensitive). Example: 'DIAGNOSTIC|CONTACTS.*particle 1842'
+- filter_regex: Regex filter for messages
 - page_size/cursor: Pagination support for large result sets
-- count_only: Return only counts by type (no entries)
 - include_stacktrace: Include stack traces in output
-
-Entries include sequenceId and timestamp fields. Use since_sequence_id to poll for
-new entries since your last read - pass the latestSequenceId from a previous response.""",
+- since_sequence_id: Only return entries after this sequence ID (for efficient polling)
+- count_only: Returns only counts by type without full entries
+- since_timestamp: Only return entries after this ISO timestamp""",
     annotations=ToolAnnotations(
         title="Read Console",
     ),
@@ -57,19 +54,7 @@ async def read_console(
         "Max messages to return in non-paging mode (accepts int or string, e.g., 5 or '5'). Ignored when paging with page_size/cursor.",
     ]
     | None = None,
-    since_sequence_id: Annotated[
-        int | str,
-        "Only return entries with sequenceId greater than this value. Use latestSequenceId from a previous response for efficient polling.",
-    ]
-    | None = None,
-    after_sequence_id: Annotated[int | str, "Alias for since_sequence_id."]
-    | None = None,
-    since_timestamp: Annotated[str, "Get messages after this timestamp (ISO 8601)"]
-    | None = None,
-    filter_regex: Annotated[
-        str,
-        "Regex pattern filter for messages (case-insensitive). Example: 'DIAGNOSTIC|CONTACTS.*particle 1842'",
-    ]
+    filter_regex: Annotated[str, "Regex filter for messages (applied server-side)"]
     | None = None,
     page_size: Annotated[
         int | str, "Page size for paginated console reads. Defaults to 50 when omitted."
@@ -79,13 +64,24 @@ async def read_console(
         int | str, "Opaque cursor for paging (0-based offset). Defaults to 0."
     ]
     | None = None,
-    count_only: Annotated[
-        bool | str, "If true, return only entry counts by type instead of full entries."
-    ]
-    | None = None,
     include_stacktrace: Annotated[
         bool | str,
         "Include stack traces in output (accepts true/false or 'true'/'false')",
+    ]
+    | None = None,
+    since_sequence_id: Annotated[
+        int | str,
+        "Only return entries after this sequence ID (for efficient polling). Use latestSequenceId from a previous response.",
+    ]
+    | None = None,
+    count_only: Annotated[
+        bool | str,
+        "When true, returns only counts by type without full entries (accepts true/false or 'true'/'false')",
+    ]
+    | None = None,
+    since_timestamp: Annotated[
+        str,
+        "Only return entries after this ISO timestamp (e.g., '2026-01-01T12:00:00Z')",
     ]
     | None = None,
 ) -> dict[str, Any]:
@@ -135,7 +131,6 @@ async def read_console(
 
     coerced_page_size = coerce_int(page_size, default=None)
     coerced_cursor = coerce_int(cursor, default=None)
-    coerced_since_seq = coerce_int(since_sequence_id or after_sequence_id, default=None)
 
     # Normalize action if it's a string
     if isinstance(action, str):
@@ -151,18 +146,20 @@ async def read_console(
     if action == "get" and count is None and coerced_page_size is None:
         count = 100
 
+    coerced_since = coerce_int(since_sequence_id, default=None)
+
     # Prepare parameters for the C# handler
     params_dict = {
         "action": action,
         "types": types,
         "count": count,
-        "sinceSequenceId": coerced_since_seq,
-        "sinceTimestamp": since_timestamp,
         "filterRegex": filter_regex,
+        "sinceSequenceId": coerced_since,
+        "sinceTimestamp": since_timestamp,
         "pageSize": coerced_page_size,
         "cursor": coerced_cursor,
-        "countOnly": count_only,
         "includeStacktrace": include_stacktrace,
+        "countOnly": count_only if count_only else None,
     }
     params_dict = {k: v for k, v in params_dict.items() if v is not None}
 

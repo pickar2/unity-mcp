@@ -75,6 +75,9 @@ namespace MCPForUnity.Editor.Services
 
             [JsonProperty("transport")]
             public EditorStateTransport Transport { get; set; }
+
+            [JsonProperty("settings")]
+            public EditorStateSettings Settings { get; set; }
         }
 
         private sealed class EditorStateUnity
@@ -240,6 +243,12 @@ namespace MCPForUnity.Editor.Services
 
             [JsonProperty("last_message_unix_ms")]
             public long? LastMessageUnixMs { get; set; }
+        }
+
+        private sealed class EditorStateSettings
+        {
+            [JsonProperty("batch_execute_max_commands")]
+            public int BatchExecuteMaxCommands { get; set; }
         }
 
         static EditorStateCache()
@@ -486,6 +495,10 @@ namespace MCPForUnity.Editor.Services
                 {
                     UnityBridgeConnected = null,
                     LastMessageUnixMs = null
+                },
+                Settings = new EditorStateSettings
+                {
+                    BatchExecuteMaxCommands = Tools.BatchExecute.GetMaxCommandsPerBatch()
                 }
             };
 
@@ -505,7 +518,18 @@ namespace MCPForUnity.Editor.Services
                 // Always return a fresh clone to prevent mutation bugs.
                 // The main GC optimization comes from state-change detection (OnUpdate)
                 // which prevents unnecessary _cached rebuilds, not from caching the clone.
-                return (JObject)_cached.DeepClone();
+                var clone = (JObject)_cached.DeepClone();
+
+                // When Unity is backgrounded, OnUpdate is throttled and the
+                // cached timestamp grows stale even though the data is current.
+                // Re-stamp only in that case so the server-side staleness check
+                // still fires for genuinely unresponsive editors when focused.
+                if (!InternalEditorUtility.isApplicationActive)
+                {
+                    clone["observed_at_unix_ms"] = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
+                }
+
+                return clone;
             }
         }
 

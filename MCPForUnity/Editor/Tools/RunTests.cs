@@ -1,5 +1,4 @@
 using System;
-using System.Linq;
 using System.Threading.Tasks;
 using MCPForUnity.Editor.Helpers;
 using MCPForUnity.Editor.Resources.Tests;
@@ -53,6 +52,8 @@ namespace MCPForUnity.Editor.Tools
                     return new ErrorResponse(parseError);
                 }
 
+                var p = new ToolParams(@params);
+
                 var recompile = ParamCoercion.CoerceBool(
                     @params?["recompile"], false);
 
@@ -62,10 +63,8 @@ namespace MCPForUnity.Editor.Tools
                     if (compileError != null) return compileError;
                 }
 
-                bool includeDetails = ParamCoercion.CoerceBool(
-                    @params?["includeDetails"] ?? @params?["include_details"], false);
-                bool includeFailedTests = ParamCoercion.CoerceBool(
-                    @params?["includeFailedTests"] ?? @params?["include_failed_tests"], false);
+                bool includeDetails = p.GetBool("includeDetails");
+                bool includeFailedTests = p.GetBool("includeFailedTests");
 
                 var filterOptions = GetFilterOptions(@params);
                 string jobId = TestJobManager.StartJob(parsedMode.Value, filterOptions);
@@ -97,80 +96,11 @@ namespace MCPForUnity.Editor.Tools
                 return null;
             }
 
-            string[] ParseStringArray(string camelCaseKey)
-            {
-                var token = @params[camelCaseKey];
-                if (token == null)
-                {
-                    var snakeKey = StringCaseUtility.ToSnakeCase(camelCaseKey);
-                    token = @params[snakeKey];
-                }
-                if (token == null) return null;
-                // Handle double-serialized arrays: the MCP bridge may send a JSON array
-                // string (e.g. "[\"name\"]") as a single string element inside an outer array.
-                // Unwrap by attempting to parse string values that look like JSON arrays.
-                string[] UnwrapValues(string[] raw)
-                {
-                    if (raw == null) return null;
-                    var unwrapped = new System.Collections.Generic.List<string>();
-                    foreach (var s in raw)
-                    {
-                        if (s != null && s.StartsWith("[") && s.EndsWith("]"))
-                        {
-                            try
-                            {
-                                var inner = JArray.Parse(s);
-                                foreach (var item in inner.Values<string>())
-                                {
-                                    if (!string.IsNullOrWhiteSpace(item))
-                                        unwrapped.Add(item);
-                                }
-                                continue;
-                            }
-                            catch { }
-                        }
-                        if (!string.IsNullOrWhiteSpace(s))
-                            unwrapped.Add(s);
-                    }
-                    return unwrapped.Count > 0 ? unwrapped.ToArray() : null;
-                }
-
-                if (token.Type == JTokenType.String)
-                {
-                    var value = token.ToString();
-                    if (string.IsNullOrWhiteSpace(value)) return null;
-                    // Try to parse as JSON array in case of double-serialization
-                    if (value.StartsWith("[") && value.EndsWith("]"))
-                    {
-                        try
-                        {
-                            var inner = JArray.Parse(value);
-                            var innerValues = inner.Values<string>()
-                                .Where(s => !string.IsNullOrWhiteSpace(s))
-                                .ToArray();
-                            if (innerValues.Length > 0) return innerValues;
-                        }
-                        catch { }
-                    }
-                    return new[] { value };
-                }
-                if (token.Type == JTokenType.Array)
-                {
-                    var array = token as JArray;
-                    if (array == null || array.Count == 0) return null;
-                    var values = array
-                        .Values<string>()
-                        .Where(s => !string.IsNullOrWhiteSpace(s))
-                        .ToArray();
-                    return UnwrapValues(values);
-                }
-                return null;
-            }
-
-            var testNames = ParseStringArray("testNames");
-            var groupNames = ParseStringArray("groupNames");
-            var categoryNames = ParseStringArray("categoryNames");
-            var assemblyNames = ParseStringArray("assemblyNames");
+            var p = new ToolParams(@params);
+            var testNames = p.GetStringArray("testNames");
+            var groupNames = p.GetStringArray("groupNames");
+            var categoryNames = p.GetStringArray("categoryNames");
+            var assemblyNames = p.GetStringArray("assemblyNames");
 
             if (testNames == null && groupNames == null && categoryNames == null && assemblyNames == null)
             {
