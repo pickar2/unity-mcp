@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Reflection;
 using System.Text.RegularExpressions;
 using MCPForUnity.Editor.Helpers;
 using Newtonsoft.Json.Linq;
@@ -744,6 +745,11 @@ namespace MCPForUnity.Editor.Tools
                 string refPath = refObj?["path"]?.ToString();
                 string resolveMethod = "explicit";
 
+                // Resolve the expected field type so we can load sub-assets correctly
+                // (e.g. Sprite is a sub-asset of Texture2D — LoadAssetAtPath<Object> returns the Texture2D,
+                //  but LoadAssetAtPath(path, typeof(Sprite)) returns the Sprite sub-asset).
+                Type fieldType = GetFieldTypeFromSerializedProperty(so, prop) ?? typeof(UnityEngine.Object);
+
                 if (refObj == null && objRefValue?.Type == JTokenType.Null)
                 {
                     // Explicit null - clear the reference
@@ -759,7 +765,7 @@ namespace MCPForUnity.Editor.Tools
 
                     if (!string.IsNullOrEmpty(resolvedPath))
                     {
-                        newRef = AssetDatabase.LoadAssetAtPath<UnityEngine.Object>(resolvedPath);
+                        newRef = LoadAssetTyped(resolvedPath, fieldType);
                     }
                     resolveMethod = !string.IsNullOrEmpty(refGuid) ? "ref.guid" : "ref.path";
                 }
@@ -774,7 +780,7 @@ namespace MCPForUnity.Editor.Tools
                         string guidPath = AssetDatabase.GUIDToAssetPath(strVal);
                         if (!string.IsNullOrEmpty(guidPath))
                         {
-                            newRef = AssetDatabase.LoadAssetAtPath<UnityEngine.Object>(guidPath);
+                            newRef = LoadAssetTyped(guidPath, fieldType);
                             resolveMethod = "guid-shorthand";
                         }
                     }
@@ -783,7 +789,7 @@ namespace MCPForUnity.Editor.Tools
                              strVal.Contains("/"))
                     {
                         string sanitizedPath = AssetPathUtility.SanitizeAssetPath(strVal);
-                        newRef = AssetDatabase.LoadAssetAtPath<UnityEngine.Object>(sanitizedPath);
+                        newRef = LoadAssetTyped(sanitizedPath, fieldType);
                         resolveMethod = "path-shorthand";
                     }
                 }
@@ -792,6 +798,15 @@ namespace MCPForUnity.Editor.Tools
                 {
                     prop.objectReferenceValue = newRef;
                     changed = true;
+                }
+
+                // Verify the assignment actually stuck (Unity silently rejects type mismatches)
+                if (newRef != null && prop.objectReferenceValue == null)
+                {
+                    string typeName = newRef.GetType().Name;
+                    string expectedName = fieldType.Name;
+                    return new { propertyPath, op = "set", ok = false, resolvedPropertyType = prop.propertyType.ToString(),
+                        message = $"Type mismatch: loaded {typeName} but field expects {expectedName}. Reference was not assigned." };
                 }
 
                 string refMessage = newRef == null ? "Cleared reference." : $"Set reference ({resolveMethod}).";
@@ -807,6 +822,82 @@ namespace MCPForUnity.Editor.Tools
             bool ok = TrySetValue(prop, valueToken, out string message);
             changed = ok;
             return new { propertyPath, op = "set", ok, resolvedPropertyType = prop.propertyType.ToString(), message };
+        }
+
+        /// <summary>
+        /// Load an asset at the given path, trying the specific field type first (to resolve sub-assets
+        /// like Sprite from a Texture2D), then falling back to UnityEngine.Object.
+        /// </summary>
+        private static UnityEngine.Object LoadAssetTyped(string assetPath, Type fieldType)
+        {
+            // Try loading as the specific type first (handles sub-assets like Sprite, AudioClip, etc.)
+            if (fieldType != null && fieldType != typeof(UnityEngine.Object))
+            {
+                var typed = AssetDatabase.LoadAssetAtPath(assetPath, fieldType);
+                if (typed != null) return typed;
+            }
+            // Fallback to generic load
+            return AssetDatabase.LoadAssetAtPath<UnityEngine.Object>(assetPath);
+        }
+
+        /// <summary>
+        /// Resolve the C# field type for a SerializedProperty via reflection on the target object.
+        /// Walks dotted paths (e.g. "nested.sprite") and handles Array.data[n] segments.
+        /// Returns null if the type cannot be determined.
+        /// </summary>
+        private static Type GetFieldTypeFromSerializedProperty(SerializedObject so, SerializedProperty prop)
+        {
+            try
+            {
+                Type currentType = so.targetObject.GetType();
+                string path = prop.propertyPath;
+
+                // Split on '.' but rejoin "Array.data[n]" as a single array-index token
+                string[] segments = path.Split('.');
+                for (int i = 0; i < segments.Length; i++)
+                {
+                    string seg = segments[i];
+
+                    // Skip "Array" and "data[n]" segments — stay on the element type of the previous array field
+                    if (seg == "Array" && i + 1 < segments.Length && segments[i + 1].StartsWith("data["))
+                    {
+                        i++; // skip the "data[n]" segment too
+                        continue;
+                    }
+                    if (seg.StartsWith("data["))
+                    {
+                        continue;
+                    }
+
+                    FieldInfo fi = null;
+                    Type search = currentType;
+                    while (search != null && fi == null)
+                    {
+                        fi = search.GetField(seg, BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
+                        search = search.BaseType;
+                    }
+
+                    if (fi == null) return null;
+
+                    currentType = fi.FieldType;
+
+                    // Unwrap arrays/lists to get the element type
+                    if (currentType.IsArray)
+                    {
+                        currentType = currentType.GetElementType();
+                    }
+                    else if (currentType.IsGenericType && currentType.GetGenericTypeDefinition() == typeof(List<>))
+                    {
+                        currentType = currentType.GetGenericArguments()[0];
+                    }
+                }
+
+                return currentType;
+            }
+            catch
+            {
+                return null;
+            }
         }
 
         private static bool TrySetValue(SerializedProperty prop, JToken valueToken, out string message)
