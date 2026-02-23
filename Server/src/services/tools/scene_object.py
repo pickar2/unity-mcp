@@ -47,7 +47,9 @@ Batch Operations (for set/delete):
 - tag: All objects with this tag
 - parent: All direct children of this parent path
 
-Position/rotation use LOCAL coordinates (relative to parent).
+Position/rotation params use LOCAL coordinates (relative to parent).
+The get response returns both local (position, rotation) and world (world_position, world_rotation).
+To unparent an object (move to scene root), set parent="" or parent="/".
 
 Examples:
   scene_object(action="list", tag="Enemy")
@@ -55,12 +57,14 @@ Examples:
   scene_object(action="get", target="/Player", components=true)
   scene_object(action="set", target="Player", active=false, position=[10, 0, 5])
   scene_object(action="set", target="Player", add_components=["Rigidbody", "BoxCollider"])
+  scene_object(action="set", target="Player", add_components=[{"typeName": "Rigidbody", "properties": {"mass": 10}}])
   scene_object(action="set", target="Player", remove_components=["BoxCollider"])
   scene_object(action="set", target="Player", component="Rigidbody", properties={"mass": 10})
   scene_object(action="set", target_regex=".*Enemy", active=false)
-  scene_object(action="create", name="Cube", primitive="Cube", position=[0, 1, 0])
+  scene_object(action="set", target="Child", parent="")
+  scene_object(action="create", name="Cube", primitive="Cube", position=[0, 1, 0], is_static=true)
   scene_object(action="delete", target="/Temp/Object")
-  scene_object(action="duplicate", target="Player", name="Player2", offset=[5, 0, 0])
+  scene_object(action="duplicate", target="Player", name="Player2", offset=[5, 0, 0], rotation=[0, 180, 0])
   scene_object(action="move_relative", target="Chair", reference="Table", direction="right", distance=2)""",
     annotations=ToolAnnotations(
         title="Scene Object",
@@ -84,19 +88,21 @@ async def scene_object(
     ] = None,
     parent: Annotated[
         str | None,
-        "Parent path for create/reparent, or filter for list/batch operations.",
+        'Parent path for create/reparent, or filter for list/batch operations. Use "" or "/" to unparent (move to scene root).',
     ] = None,
     component: Annotated[
         str | None,
         "Filter to objects having this component (list) or component type to modify properties on (set).",
     ] = None,
     components: Annotated[
-        bool | list[str] | None,
-        "Include component data in response (get: bool), or list of component types to add (create).",
+        bool | list[str | dict] | None,
+        "Include component data in response (get: bool), or list of components to add (create). "
+        'Each element can be a string type name or {"typeName": "Rigidbody", "properties": {"mass": 10}}.',
     ] = None,
     add_components: Annotated[
-        list[str] | None,
-        "List of component types to add to existing object (set action).",
+        list[str | dict] | None,
+        "List of components to add (set action). Each element can be a string type name "
+        'or {"typeName": "Rigidbody", "properties": {"mass": 10}} to add with initial properties.',
     ] = None,
     remove_components: Annotated[
         list[str] | None, "List of component types to remove from object (set action)."

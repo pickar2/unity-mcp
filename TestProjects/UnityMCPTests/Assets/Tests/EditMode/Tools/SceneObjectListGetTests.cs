@@ -514,8 +514,8 @@ namespace MCPForUnityTests.Editor.Tools
             Assert.IsTrue(result.Value<bool>("success"), result.ToString());
             var transform = result["data"]?["transform"];
             Assert.IsNotNull(transform, "Should include transform data");
-            Assert.IsNotNull(transform["position"], "Transform should include position");
-            Assert.IsNotNull(transform["local_position"], "Transform should include local_position");
+            Assert.IsNotNull(transform["position"], "Transform should include position (local)");
+            Assert.IsNotNull(transform["world_position"], "Transform should include world_position");
             Assert.IsNotNull(transform["scale"], "Transform should include scale");
         }
 

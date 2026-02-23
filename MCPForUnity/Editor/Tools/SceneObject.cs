@@ -263,10 +263,10 @@ namespace MCPForUnity.Editor.Tools
                 ["is_static"] = go.isStatic,
                 ["transform"] = new
                 {
-                    position = new { x = t.position.x, y = t.position.y, z = t.position.z },
-                    local_position = new { x = t.localPosition.x, y = t.localPosition.y, z = t.localPosition.z },
-                    rotation = new { x = t.rotation.eulerAngles.x, y = t.rotation.eulerAngles.y, z = t.rotation.eulerAngles.z },
-                    local_rotation = new { x = t.localRotation.eulerAngles.x, y = t.localRotation.eulerAngles.y, z = t.localRotation.eulerAngles.z },
+                    world_position = new { x = t.position.x, y = t.position.y, z = t.position.z },
+                    position = new { x = t.localPosition.x, y = t.localPosition.y, z = t.localPosition.z },
+                    world_rotation = new { x = t.rotation.eulerAngles.x, y = t.rotation.eulerAngles.y, z = t.rotation.eulerAngles.z },
+                    rotation = new { x = t.localRotation.eulerAngles.x, y = t.localRotation.eulerAngles.y, z = t.localRotation.eulerAngles.z },
                     scale = new { x = t.localScale.x, y = t.localScale.y, z = t.localScale.z }
                 },
                 ["parent"] = t.parent != null ? GetGameObjectPath(t.parent.gameObject) : null,
@@ -438,24 +438,37 @@ namespace MCPForUnity.Editor.Tools
                 }
             }
 
-            // Reparent with circular parenting guard
-            string parentPath = p.Get("parent");
-            if (!string.IsNullOrEmpty(parentPath))
+            // Reparent with circular parenting guard; empty/root sentinel unparents
+            var parentToken = p.GetRaw("parent");
+            if (parentToken != null)
             {
-                var newParent = ResolveTarget(parentPath);
-                if (newParent != null)
+                string parentPath = parentToken.ToString().Trim();
+                if (parentPath == "" || parentPath == "/")
                 {
-                    if (newParent.transform.IsChildOf(go.transform))
+                    if (transform.parent != null)
                     {
-                        result.Error = new ErrorResponse(
-                            $"Cannot parent '{go.name}' to '{newParent.name}', as it would create a hierarchy loop.");
-                        return result;
-                    }
-                    if (transform.parent != newParent.transform)
-                    {
-                        Undo.RecordObject(transform, "Reparent GameObject");
-                        transform.SetParent(newParent.transform, true);
+                        Undo.RecordObject(transform, "Unparent GameObject");
+                        transform.SetParent(null, true);
                         result.Changes.Add("parent");
+                    }
+                }
+                else
+                {
+                    var newParent = ResolveTarget(parentPath);
+                    if (newParent != null)
+                    {
+                        if (newParent.transform.IsChildOf(go.transform))
+                        {
+                            result.Error = new ErrorResponse(
+                                $"Cannot parent '{go.name}' to '{newParent.name}', as it would create a hierarchy loop.");
+                            return result;
+                        }
+                        if (transform.parent != newParent.transform)
+                        {
+                            Undo.RecordObject(transform, "Reparent GameObject");
+                            transform.SetParent(newParent.transform, true);
+                            result.Changes.Add("parent");
+                        }
                     }
                 }
             }
@@ -677,6 +690,9 @@ namespace MCPForUnity.Editor.Tools
             if (@params["active"] != null)
                 newGo.SetActive(p.GetBool("active", true));
 
+            if (@params["is_static"] != null)
+                newGo.isStatic = p.GetBool("is_static", false);
+
             // Tag with auto-creation
             string tag = p.Get("tag");
             if (!string.IsNullOrEmpty(tag))
@@ -853,6 +869,8 @@ namespace MCPForUnity.Editor.Tools
             string newName = p.Get("name");
             Vector3? position = VectorParsing.ParseVector3(@params["position"]);
             Vector3? offset = VectorParsing.ParseVector3(@params["offset"]);
+            Vector3? rotation = VectorParsing.ParseVector3(@params["rotation"]);
+            Vector3? scale = VectorParsing.ParseVector3(@params["scale"]);
             string parentPath = p.Get("parent");
 
             GameObject duplicatedGo = UnityEngine.Object.Instantiate(sourceGo);
@@ -870,6 +888,12 @@ namespace MCPForUnity.Editor.Tools
             {
                 duplicatedGo.transform.position = sourceGo.transform.position + offset.Value;
             }
+
+            if (rotation.HasValue)
+                duplicatedGo.transform.localEulerAngles = rotation.Value;
+
+            if (scale.HasValue)
+                duplicatedGo.transform.localScale = scale.Value;
 
             if (!string.IsNullOrEmpty(parentPath))
             {

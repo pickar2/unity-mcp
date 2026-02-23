@@ -150,9 +150,16 @@ def get_object(target: str, components: bool):
 @click.option(
     "--scale", "-s", nargs=3, type=float, default=None, help="Local scale as X Y Z."
 )
-@click.option("--reparent", default=None, help="New parent path.")
+@click.option(
+    "--reparent",
+    default=None,
+    help="New parent path. Use '' to unparent (move to root).",
+)
 @click.option("--set-tag", default=None, help="New tag (auto-creates if missing).")
 @click.option("--layer", default=None, help="New layer (number or name).")
+@click.option(
+    "--static/--no-static", "is_static", default=None, help="Set static flag."
+)
 @click.option(
     "--component", default=None, help="Component type to modify properties on."
 )
@@ -190,6 +197,7 @@ def set_object(
     reparent: Optional[str],
     set_tag: Optional[str],
     layer: Optional[str],
+    is_static: Optional[bool],
     component: Optional[str],
     properties: Optional[str],
     add_components: Optional[str],
@@ -246,6 +254,8 @@ def set_object(
         params["name"] = name
     if active is not None:
         params["active"] = active
+    if is_static is not None:
+        params["is_static"] = is_static
     if position:
         params["position"] = list(position)
     if rotation:
@@ -319,6 +329,9 @@ def set_object(
     "--components", default=None, help="Comma-separated list of components to add."
 )
 @click.option("--inactive", is_flag=True, help="Create as inactive.")
+@click.option(
+    "--static", "is_static", is_flag=True, default=False, help="Create as static."
+)
 @handle_unity_errors
 def create_object(
     name: str,
@@ -331,6 +344,7 @@ def create_object(
     layer: Optional[str],
     components: Optional[str],
     inactive: bool,
+    is_static: bool,
 ):
     """Create a new GameObject.
 
@@ -366,6 +380,8 @@ def create_object(
         params["components"] = [c.strip() for c in components.split(",")]
     if inactive:
         params["active"] = False
+    if is_static:
+        params["is_static"] = True
 
     result = run_command("scene_object", params, config)
     click.echo(format_output(result, config.format))
