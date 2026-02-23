@@ -5,7 +5,7 @@ from mcp.types import ToolAnnotations
 
 from services.registry import mcp_for_unity_tool
 from services.tools import get_unity_instance_from_context
-from services.tools.utils import coerce_bool, normalize_vector3
+from services.tools.utils import coerce_bool, normalize_vector3, parse_json_payload
 from transport.unity_transport import send_with_unity_instance
 from transport.legacy.unity_connection import async_send_command_with_retry
 from services.tools.preflight import preflight
@@ -24,9 +24,11 @@ REQUIRED_PARAMS = {
     description="""Manage Unity Prefab assets via headless operations (no UI, no prefab stages).
 
 Actions: get_info, get_hierarchy, create_from_gameobject, modify_contents.
+Use components=true with get_info/get_hierarchy to include serialized field values, or components=["TypeA","TypeB"] to filter.
 Use modify_contents for headless prefab editing - ideal for automated workflows.
 Use create_child parameter with modify_contents to add child GameObjects to a prefab (single object or array for batch creation in one save).
-Use component_properties with modify_contents to set serialized fields on existing components (e.g. component_properties={"Rigidbody": {"mass": 5.0}, "MyScript": {"health": 100}}).
+Use component + properties with modify_contents to set fields on a single component (e.g. component="Rigidbody", properties={"mass": 5.0}).
+Use component_properties with modify_contents to set fields on multiple components (e.g. component_properties={"Rigidbody": {"mass": 5.0}, "MyScript": {"health": 100}}).
 Supports object references via {"guid": "..."}, {"path": "Assets/..."}, or {"instanceID": 123}.
 
 Examples:
@@ -35,6 +37,7 @@ Examples:
   manage_prefabs(action="create_from_gameobject", target="Player", prefab_path="Assets/Prefabs/Player.prefab")
   manage_prefabs(action="modify_contents", prefab_path="Assets/Prefabs/Player.prefab", target="Body", position=[0,1,0])
   manage_prefabs(action="modify_contents", prefab_path="Assets/Prefabs/Player.prefab", create_child={"name": "Shield", "primitive_type": "Cube", "scale": [0.5,1,0.1]})
+  manage_prefabs(action="modify_contents", prefab_path="Assets/Prefabs/Player.prefab", target="Body", component="Rigidbody", properties={"mass": 5.0})
   manage_prefabs(action="modify_contents", prefab_path="Assets/Prefabs/Player.prefab", target="Body", component_properties={"Rigidbody": {"mass": 5.0}})
 
 Use manage_asset(action="search", filter_type="Prefab") to find prefabs.""",
@@ -60,7 +63,12 @@ async def manage_prefabs(
     | None = None,
     target: Annotated[
         str,
-        "Target GameObject: scene object for create_from_gameobject, or object within prefab for modify_contents (name or path like 'Parent/Child').",
+        "Target GameObject: scene object for create_from_gameobject, or object within prefab for modify_contents/get_info/get_hierarchy (name or path like 'Parent/Child').",
+    ]
+    | None = None,
+    components: Annotated[
+        bool | list[str] | str,
+        "Include component serialized data in get_info/get_hierarchy responses. Pass true for all components, or a list of type names to filter (e.g. ['Rigidbody', 'MyScript']).",
     ]
     | None = None,
     allow_overwrite: Annotated[bool, "Allow replacing existing prefab."] | None = None,
@@ -111,9 +119,19 @@ async def manage_prefabs(
         "Create child GameObject(s) in the prefab. Single object or array of objects, each with: name (required), parent (optional, defaults to target), primitive_type (optional: Cube, Sphere, Capsule, Cylinder, Plane, Quad), position, rotation, scale, components_to_add, tag, layer, set_active.",
     ]
     | None = None,
+    component: Annotated[
+        str,
+        "Component type name to set properties on in modify_contents (use with 'properties'). Example: 'Rigidbody'.",
+    ]
+    | None = None,
+    properties: Annotated[
+        dict[str, Any],
+        'Property values to set on the specified component in modify_contents (use with \'component\'). Example: {"mass": 5.0, "useGravity": false}.',
+    ]
+    | None = None,
     component_properties: Annotated[
         dict[str, dict[str, Any]],
-        'Set properties on existing components in modify_contents. Keys are component type names, values are dicts of property name to value. Example: {"Rigidbody": {"mass": 5.0}, "MyScript": {"health": 100}}. Supports object references via {"guid": "..."}, {"path": "Assets/..."}, or {"instanceID": 123}.',
+        'Set properties on multiple components in modify_contents. Keys are component type names, values are dicts of property name to value. Example: {"Rigidbody": {"mass": 5.0}, "MyScript": {"health": 100}}. Supports object references via {"guid": "..."}, {"path": "Assets/..."}, or {"instanceID": 123}.',
     ]
     | None = None,
 ) -> dict[str, Any]:
@@ -155,6 +173,19 @@ async def manage_prefabs(
 
         if target:
             params["target"] = target
+
+        # components param: bool or list of type names
+        if components is not None:
+            if isinstance(components, str):
+                components_val = parse_json_payload(components)
+                if components_val is not None:
+                    params["components"] = components_val
+                elif components.lower() in ("true", "1"):
+                    params["components"] = True
+                else:
+                    params["components"] = [components]
+            else:
+                params["components"] = components
 
         allow_overwrite_val = coerce_bool(allow_overwrite)
         if allow_overwrite_val is not None:
@@ -199,6 +230,10 @@ async def manage_prefabs(
             params["componentsToAdd"] = components_to_add
         if components_to_remove is not None:
             params["componentsToRemove"] = components_to_remove
+        if component is not None:
+            params["component"] = component
+        if properties is not None:
+            params["properties"] = properties
         if component_properties is not None:
             params["componentProperties"] = component_properties
         if create_child is not None:

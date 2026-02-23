@@ -253,6 +253,239 @@ namespace MCPForUnityTests.Editor.Tools
             }
         }
 
+        [Test]
+        public void GetInfo_WithComponentsTrue_ReturnsAllComponentData()
+        {
+            string prefabPath = CreatePrefabWithComponents("InfoCompAll", typeof(Rigidbody), typeof(Light));
+
+            try
+            {
+                var result = ToJObject(ManagePrefabs.HandleCommand(new JObject
+                {
+                    ["action"] = "get_info",
+                    ["prefabPath"] = prefabPath,
+                    ["components"] = true
+                }));
+
+                Assert.IsTrue(result.Value<bool>("success"), $"Expected success but got: {result}");
+                var data = result["data"] as JObject;
+                var components = data["components"] as JArray;
+                Assert.IsNotNull(components, "Expected 'components' in response data");
+                Assert.IsTrue(components.Count >= 3, $"Expected at least 3 components (Transform+Rigidbody+Light), got {components.Count}");
+
+                // Verify component structure has typeName and properties
+                var rbComp = components.Cast<JObject>().FirstOrDefault(c => c.Value<string>("typeName")?.Contains("Rigidbody") == true);
+                Assert.IsNotNull(rbComp, "Expected Rigidbody component data");
+                Assert.IsNotNull(rbComp["properties"], "Expected properties in component data");
+            }
+            finally
+            {
+                SafeDeleteAsset(prefabPath);
+            }
+        }
+
+        [Test]
+        public void GetInfo_WithComponentsFilter_ReturnsOnlyRequestedComponents()
+        {
+            string prefabPath = CreatePrefabWithComponents("InfoCompFilter", typeof(Rigidbody), typeof(Light));
+
+            try
+            {
+                var result = ToJObject(ManagePrefabs.HandleCommand(new JObject
+                {
+                    ["action"] = "get_info",
+                    ["prefabPath"] = prefabPath,
+                    ["components"] = new JArray("Rigidbody")
+                }));
+
+                Assert.IsTrue(result.Value<bool>("success"), $"Expected success but got: {result}");
+                var data = result["data"] as JObject;
+                var components = data["components"] as JArray;
+                Assert.IsNotNull(components);
+                Assert.AreEqual(1, components.Count, "Expected only Rigidbody component");
+
+                var comp = (JObject)components[0];
+                Assert.IsTrue(comp.Value<string>("typeName").Contains("Rigidbody"));
+            }
+            finally
+            {
+                SafeDeleteAsset(prefabPath);
+            }
+        }
+
+        [Test]
+        public void GetInfo_WithComponentsFalse_NoComponentData()
+        {
+            string prefabPath = CreatePrefabWithComponents("InfoCompFalse", typeof(Rigidbody));
+
+            try
+            {
+                var result = ToJObject(ManagePrefabs.HandleCommand(new JObject
+                {
+                    ["action"] = "get_info",
+                    ["prefabPath"] = prefabPath,
+                    ["components"] = false
+                }));
+
+                Assert.IsTrue(result.Value<bool>("success"));
+                var data = result["data"] as JObject;
+                Assert.IsNull(data["components"], "components=false should not include component data");
+            }
+            finally
+            {
+                SafeDeleteAsset(prefabPath);
+            }
+        }
+
+        [Test]
+        public void GetInfo_WithTarget_ReadsChildComponents()
+        {
+            EnsureFolder(TempDirectory);
+            GameObject root = new GameObject("InfoTargetTest");
+            GameObject child = new GameObject("Child") { transform = { parent = root.transform } };
+            child.AddComponent<Rigidbody>().mass = 55f;
+
+            string prefabPath = Path.Combine(TempDirectory, "InfoTargetTest.prefab").Replace('\\', '/');
+            PrefabUtility.SaveAsPrefabAsset(root, prefabPath, out bool success);
+            UnityEngine.Object.DestroyImmediate(root);
+            AssetDatabase.Refresh();
+            Assert.IsTrue(success);
+
+            try
+            {
+                var result = ToJObject(ManagePrefabs.HandleCommand(new JObject
+                {
+                    ["action"] = "get_info",
+                    ["prefabPath"] = prefabPath,
+                    ["target"] = "Child",
+                    ["components"] = new JArray("Rigidbody")
+                }));
+
+                Assert.IsTrue(result.Value<bool>("success"), $"Expected success but got: {result}");
+                var data = result["data"] as JObject;
+                Assert.AreEqual("Child", data.Value<string>("target"));
+
+                var components = data["components"] as JArray;
+                Assert.IsNotNull(components);
+                Assert.AreEqual(1, components.Count);
+
+                var rb = (JObject)components[0];
+                Assert.IsTrue(rb.Value<string>("typeName").Contains("Rigidbody"));
+                var props = rb["properties"] as JObject;
+                Assert.IsNotNull(props);
+                Assert.AreEqual(55f, props.Value<float>("mass"), 0.01f);
+            }
+            finally
+            {
+                SafeDeleteAsset(prefabPath);
+            }
+        }
+
+        [Test]
+        public void GetHierarchy_WithComponentsTrue_IncludesComponentData()
+        {
+            string prefabPath = CreatePrefabWithComponents("HierCompAll", typeof(Rigidbody));
+
+            try
+            {
+                var result = ToJObject(ManagePrefabs.HandleCommand(new JObject
+                {
+                    ["action"] = "get_hierarchy",
+                    ["prefabPath"] = prefabPath,
+                    ["components"] = true
+                }));
+
+                Assert.IsTrue(result.Value<bool>("success"), $"Expected success but got: {result}");
+                var data = result["data"] as JObject;
+                var items = data["items"] as JArray;
+                Assert.IsTrue(items.Count >= 1);
+
+                // Root item should have components data
+                var rootItem = (JObject)items[0];
+                var components = rootItem["components"] as JArray;
+                Assert.IsNotNull(components, "Expected 'components' on hierarchy item");
+                Assert.IsTrue(components.Count >= 2, "Expected at least Transform + Rigidbody");
+            }
+            finally
+            {
+                SafeDeleteAsset(prefabPath);
+            }
+        }
+
+        [Test]
+        public void GetHierarchy_WithComponentsFilter_FiltersPerNode()
+        {
+            EnsureFolder(TempDirectory);
+            GameObject root = new GameObject("HierCompFilter");
+            root.AddComponent<Rigidbody>();
+            root.AddComponent<Light>();
+            GameObject child = new GameObject("Child") { transform = { parent = root.transform } };
+            child.AddComponent<BoxCollider>();
+
+            string prefabPath = Path.Combine(TempDirectory, "HierCompFilter.prefab").Replace('\\', '/');
+            PrefabUtility.SaveAsPrefabAsset(root, prefabPath, out bool success);
+            UnityEngine.Object.DestroyImmediate(root);
+            AssetDatabase.Refresh();
+            Assert.IsTrue(success);
+
+            try
+            {
+                var result = ToJObject(ManagePrefabs.HandleCommand(new JObject
+                {
+                    ["action"] = "get_hierarchy",
+                    ["prefabPath"] = prefabPath,
+                    ["components"] = new JArray("Rigidbody")
+                }));
+
+                Assert.IsTrue(result.Value<bool>("success"), $"Expected success but got: {result}");
+                var data = result["data"] as JObject;
+                var items = data["items"] as JArray;
+
+                // Root should have 1 component (Rigidbody only, not Light/Transform)
+                var rootItem = items.Cast<JObject>().First(i => i.Value<string>("name") == "HierCompFilter");
+                var rootComps = rootItem["components"] as JArray;
+                Assert.AreEqual(1, rootComps.Count, "Root should have only Rigidbody");
+                Assert.IsTrue(((JObject)rootComps[0]).Value<string>("typeName").Contains("Rigidbody"));
+
+                // Child should have 0 components (no Rigidbody on child)
+                var childItem = items.Cast<JObject>().First(i => i.Value<string>("name") == "Child");
+                var childComps = childItem["components"] as JArray;
+                Assert.AreEqual(0, childComps.Count, "Child should have no Rigidbody");
+            }
+            finally
+            {
+                SafeDeleteAsset(prefabPath);
+            }
+        }
+
+        [Test]
+        public void GetHierarchy_WithoutComponents_NoComponentData()
+        {
+            string prefabPath = CreatePrefabWithComponents("HierNoComp", typeof(Rigidbody));
+
+            try
+            {
+                var result = ToJObject(ManagePrefabs.HandleCommand(new JObject
+                {
+                    ["action"] = "get_hierarchy",
+                    ["prefabPath"] = prefabPath
+                }));
+
+                Assert.IsTrue(result.Value<bool>("success"));
+                var data = result["data"] as JObject;
+                var items = data["items"] as JArray;
+                var rootItem = (JObject)items[0];
+
+                // Should have componentTypes (list of strings) but NOT components (serialized data)
+                Assert.IsNotNull(rootItem["componentTypes"]);
+                Assert.IsNull(rootItem["components"], "Should not include component data without components param");
+            }
+            finally
+            {
+                SafeDeleteAsset(prefabPath);
+            }
+        }
+
         #endregion
 
         #region UPDATE Tests (ModifyContents)
@@ -911,6 +1144,183 @@ namespace MCPForUnityTests.Editor.Tools
                 GameObject reloaded = AssetDatabase.LoadAssetAtPath<GameObject>(prefabPath);
                 Assert.AreEqual(new Vector3(5f, 10f, 15f), reloaded.transform.localPosition);
                 Assert.AreEqual(25f, reloaded.GetComponent<Rigidbody>().mass, 0.01f);
+            }
+            finally
+            {
+                SafeDeleteAsset(prefabPath);
+            }
+        }
+
+        [Test]
+        public void ModifyContents_SingleComponent_SetsProperties()
+        {
+            string prefabPath = CreatePrefabWithComponents("SingleCompProp", typeof(Rigidbody));
+
+            try
+            {
+                var result = ToJObject(ManagePrefabs.HandleCommand(new JObject
+                {
+                    ["action"] = "modify_contents",
+                    ["prefabPath"] = prefabPath,
+                    ["component"] = "Rigidbody",
+                    ["properties"] = new JObject
+                    {
+                        ["mass"] = 25f,
+                        ["useGravity"] = false
+                    }
+                }));
+
+                Assert.IsTrue(result.Value<bool>("success"), $"Expected success but got: {result}");
+                Assert.IsTrue(result["data"].Value<bool>("modified"));
+
+                GameObject reloaded = AssetDatabase.LoadAssetAtPath<GameObject>(prefabPath);
+                var rb = reloaded.GetComponent<Rigidbody>();
+                Assert.AreEqual(25f, rb.mass, 0.01f);
+                Assert.IsFalse(rb.useGravity);
+            }
+            finally
+            {
+                SafeDeleteAsset(prefabPath);
+            }
+        }
+
+        [Test]
+        public void ModifyContents_SingleComponent_OnChildTarget()
+        {
+            EnsureFolder(TempDirectory);
+            GameObject root = new GameObject("SingleCompChild");
+            GameObject child = new GameObject("Child") { transform = { parent = root.transform } };
+            child.AddComponent<Rigidbody>();
+
+            string prefabPath = Path.Combine(TempDirectory, "SingleCompChild.prefab").Replace('\\', '/');
+            PrefabUtility.SaveAsPrefabAsset(root, prefabPath, out bool success);
+            UnityEngine.Object.DestroyImmediate(root);
+            AssetDatabase.Refresh();
+            Assert.IsTrue(success);
+
+            try
+            {
+                var result = ToJObject(ManagePrefabs.HandleCommand(new JObject
+                {
+                    ["action"] = "modify_contents",
+                    ["prefabPath"] = prefabPath,
+                    ["target"] = "Child",
+                    ["component"] = "Rigidbody",
+                    ["properties"] = new JObject { ["mass"] = 77f }
+                }));
+
+                Assert.IsTrue(result.Value<bool>("success"), $"Expected success but got: {result}");
+
+                GameObject reloaded = AssetDatabase.LoadAssetAtPath<GameObject>(prefabPath);
+                var childRb = reloaded.transform.Find("Child").GetComponent<Rigidbody>();
+                Assert.AreEqual(77f, childRb.mass, 0.01f);
+            }
+            finally
+            {
+                SafeDeleteAsset(prefabPath);
+            }
+        }
+
+        [Test]
+        public void ModifyContents_SingleComponent_ErrorForMissingComponent()
+        {
+            string prefabPath = CreatePrefabWithComponents("SingleCompMissing", typeof(Rigidbody));
+
+            try
+            {
+                var result = ToJObject(ManagePrefabs.HandleCommand(new JObject
+                {
+                    ["action"] = "modify_contents",
+                    ["prefabPath"] = prefabPath,
+                    ["component"] = "Light",
+                    ["properties"] = new JObject { ["intensity"] = 5f }
+                }));
+
+                Assert.IsFalse(result.Value<bool>("success"));
+                Assert.IsTrue(result.Value<string>("error").Contains("not found"));
+            }
+            finally
+            {
+                SafeDeleteAsset(prefabPath);
+            }
+        }
+
+        [Test]
+        public void ModifyContents_SingleComponent_ErrorForInvalidType()
+        {
+            string prefabPath = CreatePrefabWithComponents("SingleCompBadType", typeof(Rigidbody));
+
+            try
+            {
+                var result = ToJObject(ManagePrefabs.HandleCommand(new JObject
+                {
+                    ["action"] = "modify_contents",
+                    ["prefabPath"] = prefabPath,
+                    ["component"] = "NonexistentComponent",
+                    ["properties"] = new JObject { ["foo"] = 1 }
+                }));
+
+                Assert.IsFalse(result.Value<bool>("success"));
+                Assert.IsTrue(result.Value<string>("error").Contains("not found"));
+            }
+            finally
+            {
+                SafeDeleteAsset(prefabPath);
+            }
+        }
+
+        [Test]
+        public void ModifyContents_SingleComponent_CombinesWithOtherModifications()
+        {
+            string prefabPath = CreatePrefabWithComponents("SingleCompCombined", typeof(Rigidbody));
+
+            try
+            {
+                var result = ToJObject(ManagePrefabs.HandleCommand(new JObject
+                {
+                    ["action"] = "modify_contents",
+                    ["prefabPath"] = prefabPath,
+                    ["position"] = new JArray(1f, 2f, 3f),
+                    ["component"] = "Rigidbody",
+                    ["properties"] = new JObject { ["mass"] = 15f }
+                }));
+
+                Assert.IsTrue(result.Value<bool>("success"), $"Expected success but got: {result}");
+
+                GameObject reloaded = AssetDatabase.LoadAssetAtPath<GameObject>(prefabPath);
+                Assert.AreEqual(15f, reloaded.GetComponent<Rigidbody>().mass, 0.01f);
+                Assert.AreEqual(new Vector3(1f, 2f, 3f), reloaded.transform.localPosition);
+            }
+            finally
+            {
+                SafeDeleteAsset(prefabPath);
+            }
+        }
+
+        [Test]
+        public void ModifyContents_SingleComponent_WithComponentProperties_BothApplied()
+        {
+            string prefabPath = CreatePrefabWithComponents("SingleAndMulti", typeof(Rigidbody), typeof(Light));
+
+            try
+            {
+                var result = ToJObject(ManagePrefabs.HandleCommand(new JObject
+                {
+                    ["action"] = "modify_contents",
+                    ["prefabPath"] = prefabPath,
+                    ["component"] = "Rigidbody",
+                    ["properties"] = new JObject { ["mass"] = 33f },
+                    ["componentProperties"] = new JObject
+                    {
+                        ["Light"] = new JObject { ["intensity"] = 7.5f }
+                    }
+                }));
+
+                Assert.IsTrue(result.Value<bool>("success"), $"Expected success but got: {result}");
+
+                GameObject reloaded = AssetDatabase.LoadAssetAtPath<GameObject>(prefabPath);
+                Assert.AreEqual(33f, reloaded.GetComponent<Rigidbody>().mass, 0.01f);
+                Assert.AreEqual(7.5f, reloaded.GetComponent<Light>().intensity, 0.01f);
             }
             finally
             {

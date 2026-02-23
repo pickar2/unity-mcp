@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using MCPForUnity.Editor.Helpers;
 using Newtonsoft.Json.Linq;
 using UnityEditor;
@@ -358,24 +359,44 @@ namespace MCPForUnity.Editor.Tools.Prefabs
             string guid = PrefabUtilityHelper.GetPrefabGUID(sanitizedPath);
             PrefabAssetType assetType = PrefabUtility.GetPrefabAssetType(prefabAsset);
             string prefabTypeString = assetType.ToString();
-            var componentTypes = PrefabUtilityHelper.GetComponentTypeNames(prefabAsset);
             int childCount = PrefabUtilityHelper.CountChildrenRecursive(prefabAsset.transform);
             var (isVariant, parentPrefab, _) = PrefabUtilityHelper.GetVariantInfo(prefabAsset);
 
-            return new SuccessResponse(
-                $"Successfully retrieved prefab info.",
-                new
-                {
-                    assetPath = sanitizedPath,
-                    guid = guid,
-                    prefabType = prefabTypeString,
-                    rootObjectName = prefabAsset.name,
-                    rootComponentTypes = componentTypes,
-                    childCount = childCount,
-                    isVariant = isVariant,
-                    parentPrefab = parentPrefab
-                }
-            );
+            // Resolve target for component reading (defaults to root)
+            string target = @params["target"]?.ToString();
+            GameObject targetGo = prefabAsset;
+            if (!string.IsNullOrEmpty(target))
+            {
+                Transform found = FindChildByNameOrPath(prefabAsset.transform, target);
+                if (found == null)
+                    return new ErrorResponse($"Target '{target}' not found in prefab at '{sanitizedPath}'.");
+                targetGo = found.gameObject;
+            }
+
+            var componentTypes = PrefabUtilityHelper.GetComponentTypeNames(targetGo);
+
+            var data = new Dictionary<string, object>
+            {
+                ["assetPath"] = sanitizedPath,
+                ["guid"] = guid,
+                ["prefabType"] = prefabTypeString,
+                ["rootObjectName"] = prefabAsset.name,
+                ["rootComponentTypes"] = componentTypes,
+                ["childCount"] = childCount,
+                ["isVariant"] = isVariant,
+                ["parentPrefab"] = parentPrefab
+            };
+
+            // Include component serialized data if requested
+            var componentFilter = ParseComponentsParam(@params);
+            if (componentFilter != null)
+            {
+                data["components"] = SerializeComponentData(targetGo, componentFilter);
+                if (!string.IsNullOrEmpty(target))
+                    data["target"] = target;
+            }
+
+            return new SuccessResponse("Successfully retrieved prefab info.", data);
         }
 
         /// <summary>
@@ -405,8 +426,10 @@ namespace MCPForUnity.Editor.Tools.Prefabs
 
             try
             {
+                var componentFilter = ParseComponentsParam(@params);
+
                 // Build complete hierarchy items (no pagination)
-                var allItems = BuildHierarchyItems(prefabContents.transform, sanitizedPath);
+                var allItems = BuildHierarchyItems(prefabContents.transform, sanitizedPath, componentFilter);
 
                 return new SuccessResponse(
                     $"Successfully retrieved prefab hierarchy. Found {allItems.Count} objects.",
@@ -758,6 +781,30 @@ namespace MCPForUnity.Editor.Tools.Prefabs
                 }
             }
 
+            // Set properties on a single component (component + properties shorthand)
+            string singleComponentName = @params["component"]?.ToString();
+            JObject singleProperties = @params["properties"] as JObject;
+            if (!string.IsNullOrEmpty(singleComponentName) && singleProperties != null && singleProperties.HasValues)
+            {
+                if (!ComponentResolver.TryResolve(singleComponentName, out Type singleComponentType, out string singleResolveError))
+                    return (false, new ErrorResponse($"Component type '{singleComponentName}' not found — {singleResolveError}"));
+
+                Component singleComponent = targetGo.GetComponent(singleComponentType);
+                if (singleComponent == null)
+                    return (false, new ErrorResponse($"Component '{singleComponentName}' not found on '{targetGo.name}'"));
+
+                var singleErrors = new List<string>();
+                foreach (var prop in singleProperties.Properties())
+                {
+                    if (!ComponentOps.SetProperty(singleComponent, prop.Name, prop.Value, out string setError))
+                        singleErrors.Add($"{singleComponentName}.{prop.Name}: {setError}");
+                    else
+                        modified = true;
+                }
+                if (singleErrors.Count > 0)
+                    return (false, new ErrorResponse($"Failed to set component properties (no changes saved): {string.Join("; ", singleErrors)}"));
+            }
+
             // Set properties on existing components
             JObject componentProperties = @params["componentProperties"] as JObject ?? @params["component_properties"] as JObject;
             if (componentProperties != null && componentProperties.Count > 0)
@@ -961,10 +1008,10 @@ namespace MCPForUnity.Editor.Tools.Prefabs
         /// <param name="root">The root transform of the prefab.</param>
         /// <param name="mainPrefabPath">Asset path of the main prefab.</param>
         /// <returns>List of hierarchy items with prefab information.</returns>
-        private static List<object> BuildHierarchyItems(Transform root, string mainPrefabPath)
+        private static List<object> BuildHierarchyItems(Transform root, string mainPrefabPath, HashSet<string> componentFilter = null)
         {
             var items = new List<object>();
-            BuildHierarchyItemsRecursive(root, root, mainPrefabPath, "", items);
+            BuildHierarchyItemsRecursive(root, root, mainPrefabPath, "", items, componentFilter);
             return items;
         }
 
@@ -976,35 +1023,36 @@ namespace MCPForUnity.Editor.Tools.Prefabs
         /// <param name="mainPrefabPath">Asset path of the main prefab.</param>
         /// <param name="parentPath">Parent path for building full hierarchy path.</param>
         /// <param name="items">List to accumulate hierarchy items.</param>
-        private static void BuildHierarchyItemsRecursive(Transform transform, Transform mainPrefabRoot, string mainPrefabPath, string parentPath, List<object> items)
+        private static void BuildHierarchyItemsRecursive(Transform transform, Transform mainPrefabRoot, string mainPrefabPath, string parentPath, List<object> items, HashSet<string> componentFilter)
         {
             if (transform == null) return;
 
-            string name = transform.gameObject.name;
+            GameObject go = transform.gameObject;
+            string name = go.name;
             string path = string.IsNullOrEmpty(parentPath) ? name : $"{parentPath}/{name}";
-            int instanceId = transform.gameObject.GetInstanceID();
-            bool activeSelf = transform.gameObject.activeSelf;
+            int instanceId = go.GetInstanceID();
+            bool activeSelf = go.activeSelf;
             int childCount = transform.childCount;
-            var componentTypes = PrefabUtilityHelper.GetComponentTypeNames(transform.gameObject);
+            var componentTypes = PrefabUtilityHelper.GetComponentTypeNames(go);
 
             // Prefab information
-            bool isNestedPrefab = PrefabUtility.IsAnyPrefabInstanceRoot(transform.gameObject);
+            bool isNestedPrefab = PrefabUtility.IsAnyPrefabInstanceRoot(go);
             bool isPrefabRoot = transform == mainPrefabRoot;
-            int nestingDepth = isPrefabRoot ? 0 : PrefabUtilityHelper.GetPrefabNestingDepth(transform.gameObject, mainPrefabRoot);
+            int nestingDepth = isPrefabRoot ? 0 : PrefabUtilityHelper.GetPrefabNestingDepth(go, mainPrefabRoot);
             string parentPrefabPath = isNestedPrefab && !isPrefabRoot
-                ? PrefabUtilityHelper.GetParentPrefabPath(transform.gameObject, mainPrefabRoot)
+                ? PrefabUtilityHelper.GetParentPrefabPath(go, mainPrefabRoot)
                 : null;
-            string nestedPrefabPath = isNestedPrefab ? PrefabUtilityHelper.GetNestedPrefabPath(transform.gameObject) : null;
+            string nestedPrefabPath = isNestedPrefab ? PrefabUtilityHelper.GetNestedPrefabPath(go) : null;
 
-            var item = new
+            var item = new Dictionary<string, object>
             {
-                name = name,
-                instanceId = instanceId,
-                path = path,
-                activeSelf = activeSelf,
-                childCount = childCount,
-                componentTypes = componentTypes,
-                prefab = new
+                ["name"] = name,
+                ["instanceId"] = instanceId,
+                ["path"] = path,
+                ["activeSelf"] = activeSelf,
+                ["childCount"] = childCount,
+                ["componentTypes"] = componentTypes,
+                ["prefab"] = new
                 {
                     isRoot = isPrefabRoot,
                     isNestedRoot = isNestedPrefab,
@@ -1014,13 +1062,97 @@ namespace MCPForUnity.Editor.Tools.Prefabs
                 }
             };
 
+            if (componentFilter != null)
+            {
+                item["components"] = SerializeComponentData(go, componentFilter);
+            }
+
             items.Add(item);
 
             // Recursively process children
             foreach (Transform child in transform)
             {
-                BuildHierarchyItemsRecursive(child, mainPrefabRoot, mainPrefabPath, path, items);
+                BuildHierarchyItemsRecursive(child, mainPrefabRoot, mainPrefabPath, path, items, componentFilter);
             }
+        }
+
+        /// <summary>
+        /// Parses the 'components' parameter: true/bool → empty HashSet (= all), list of strings → HashSet of those names, null → null (= off).
+        /// Returns null if the parameter is absent/false, an empty HashSet for "all", or a populated HashSet for a filter list.
+        /// </summary>
+        private static HashSet<string> ParseComponentsParam(JObject @params)
+        {
+            var token = @params["components"];
+            if (token == null) return null;
+
+            if (token.Type == JTokenType.Boolean)
+                return token.Value<bool>() ? new HashSet<string>(StringComparer.OrdinalIgnoreCase) : null;
+
+            if (token.Type == JTokenType.String)
+            {
+                string s = token.Value<string>();
+                if (string.Equals(s, "true", StringComparison.OrdinalIgnoreCase))
+                    return new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+                if (string.Equals(s, "false", StringComparison.OrdinalIgnoreCase))
+                    return null;
+                return new HashSet<string>(StringComparer.OrdinalIgnoreCase) { s };
+            }
+
+            if (token is JArray arr)
+            {
+                var set = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+                foreach (var item in arr)
+                    if (item.Type == JTokenType.String)
+                        set.Add(item.Value<string>());
+                return set.Count > 0 ? set : null;
+            }
+
+            return null;
+        }
+
+        /// <summary>
+        /// Serializes component data for a GameObject, optionally filtered by type names.
+        /// Empty filter = all components. Populated filter = only matching types.
+        /// </summary>
+        private static List<object> SerializeComponentData(GameObject go, HashSet<string> filter)
+        {
+            var list = new List<object>();
+            bool filterAll = filter.Count == 0;
+
+            foreach (var comp in go.GetComponents<Component>())
+            {
+                if (comp == null) continue;
+                string typeName = comp.GetType().Name;
+                if (filterAll || filter.Contains(typeName))
+                    list.Add(GameObjectSerializer.GetComponentData(comp));
+            }
+            return list;
+        }
+
+        /// <summary>
+        /// Finds a child by name or slash-separated path within a loaded prefab asset (not prefab contents).
+        /// </summary>
+        private static Transform FindChildByNameOrPath(Transform root, string nameOrPath)
+        {
+            if (string.IsNullOrEmpty(nameOrPath)) return root;
+
+            // Try path first
+            Transform found = root.Find(nameOrPath);
+            if (found != null) return found;
+
+            // Fall back to recursive name search
+            return FindChildRecursive(root, nameOrPath);
+        }
+
+        private static Transform FindChildRecursive(Transform parent, string name)
+        {
+            foreach (Transform child in parent)
+            {
+                if (child.name == name) return child;
+                Transform found = FindChildRecursive(child, name);
+                if (found != null) return found;
+            }
+            return null;
         }
 
         #endregion
