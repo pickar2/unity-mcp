@@ -646,6 +646,12 @@ namespace MCPForUnity.Editor.Helpers
         {
             if (value == null) return JValue.CreateNull();
 
+            // Skip types that crash Newtonsoft.Json serialization (Unity 6+ TransformHandle
+            // implements IEnumerable but throws NullReferenceException when enumerated)
+            string typeName = type.Name;
+            if (typeName == "TransformHandle" || typeName == "TransformAccessArray")
+                return null;
+
             try
             {
                 // Use the pre-configured OUTPUT serializer instance
