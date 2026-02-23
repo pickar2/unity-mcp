@@ -61,29 +61,27 @@ manage_scene(action="create", name="GameLevel", path="Assets/Scenes/")
 
 # 2. Batch create environment objects
 batch_execute(commands=[
-    {"tool": "manage_gameobject", "params": {
-        "action": "create", "name": "Ground", "primitive_type": "Plane",
+    {"tool": "scene_object", "params": {
+        "action": "create", "name": "Ground", "primitive": "Plane",
         "position": [0, 0, 0], "scale": [10, 1, 10]
     }},
-    {"tool": "manage_gameobject", "params": {
-        "action": "create", "name": "Light", "primitive_type": "Cube"
+    {"tool": "scene_object", "params": {
+        "action": "create", "name": "Light"
     }},
-    {"tool": "manage_gameobject", "params": {
-        "action": "create", "name": "Player", "primitive_type": "Capsule",
+    {"tool": "scene_object", "params": {
+        "action": "create", "name": "Player", "primitive": "Capsule",
         "position": [0, 1, 0]
     }}
 ])
 
-# 3. Add light component (delete cube mesh, add light)
-manage_components(action="remove", target="Light", component_type="MeshRenderer")
-manage_components(action="remove", target="Light", component_type="MeshFilter")
-manage_components(action="remove", target="Light", component_type="BoxCollider")
-manage_components(action="add", target="Light", component_type="Light")
-manage_components(action="set_property", target="Light", component_type="Light",
-    property="type", value="Directional")
+# 3. Add light component
+scene_object(action="set", target="Light",
+    add_components=["Light"],
+    remove_components=["MeshRenderer", "MeshFilter", "BoxCollider"],
+    component_properties={"Light": {"type": 1}})  # 1 = Directional
 
 # 4. Set up camera
-manage_gameobject(action="modify", target="Main Camera", position=[0, 5, -10],
+scene_object(action="set", target="Main Camera", position=[0, 5, -10],
     rotation=[30, 0, 0])
 
 # 5. Verify with screenshot
@@ -100,12 +98,12 @@ manage_scene(action="save")
 commands = []
 for x in range(5):
     for z in range(5):
-        commands.append({
-            "tool": "manage_gameobject",
+commands.append({
+            "tool": "scene_object",
             "params": {
                 "action": "create",
                 "name": f"Cube_{x}_{z}",
-                "primitive_type": "Cube",
+                "primitive": "Cube",
                 "position": [x * 2, 0, z * 2]
             }
         })
@@ -118,15 +116,15 @@ batch_execute(commands=commands[:25], parallel=True)
 
 ```python
 # Find template object
-result = find_gameobjects(search_term="Template", search_method="by_name")
-template_id = result["ids"][0]
+result = scene_object(action="list", target_regex="Template")
+template_path = result["data"]["objects"][0]["path"]
 
 # Duplicate in a line
 for i in range(10):
-    manage_gameobject(
+    scene_object(
         action="duplicate",
-        target=template_id,
-        new_name=f"Instance_{i}",
+        target=template_path,
+        name=f"Instance_{i}",
         offset=[i * 2, 0, 0]
     )
 ```
@@ -169,16 +167,9 @@ if console["entries"]:
     print("Compilation errors:", console["entries"])
 else:
     # 4. Attach to GameObject
-    manage_gameobject(action="modify", target="Enemy", components_to_add=["EnemyAI"])
-    
-    # 5. Set component properties
-    manage_components(
-        action="set_property",
-        target="Enemy",
-        component_type="EnemyAI",
-        properties={
-            "speed": 10.0
-        }
+    scene_object(action="set", target="Enemy",
+        add_components=["EnemyAI"],
+        component_properties={"EnemyAI": {"speed": 10.0}}
     )
 ```
 
@@ -450,25 +441,21 @@ read_console(types=["error"], since_sequence_id=errors["latestSequenceId"])
 ### Investigate Missing References
 
 ```python
-# 1. Find the GameObject
-result = find_gameobjects(search_term="Player", search_method="by_name")
+# 1. Find the GameObject and its components
+result = scene_object(action="get", target="Player", components=True)
 
-# 2. Get all components
-# Read mcpforunity://scene/gameobject/{id}/components
+# 2. Check for null references in serialized fields
+# Look for fields with null/missing values in component data
 
-# 3. Check for null references in serialized fields
-# Look for fields with null/missing values
+# 3. Find the referenced object
+target = scene_object(action="list", target_regex="Target")
 
-# 4. Find the referenced object
-result = find_gameobjects(search_term="Target", search_method="by_name")
-
-# 5. Set the reference
-manage_components(
-    action="set_property",
+# 4. Set the reference
+scene_object(
+    action="set",
     target="Player",
-    component_type="PlayerController",
-    property="target",
-    value={"instanceID": result["ids"][0]}  # Reference by ID
+    component="PlayerController",
+    properties={"target": {"instanceID": target["data"]["objects"][0]["instance_id"]}}
 )
 ```
 
@@ -537,26 +524,10 @@ new_entries = read_console(since_sequence_id=last_seq)
 ### Mass Property Update
 
 ```python
-# Find all enemies
-enemies = find_gameobjects(search_term="Enemy", search_method="by_tag")
-
-# Update health on all enemies
-commands = []
-for enemy_id in enemies["ids"]:
-    commands.append({
-        "tool": "manage_components",
-        "params": {
-            "action": "set_property",
-            "target": enemy_id,
-            "component_type": "EnemyHealth",
-            "property": "maxHealth",
-            "value": 100
-        }
-    })
-
-# Execute in batches
-for i in range(0, len(commands), 25):
-    batch_execute(commands=commands[i:i+25], parallel=True)
+# Batch update all enemies at once using tag selector
+scene_object(action="set", tag="Enemy",
+    component="EnemyHealth",
+    properties={"maxHealth": 100})
 ```
 
 ### Mass Object Creation with Variations
@@ -566,12 +537,12 @@ import random
 
 commands = []
 for i in range(20):
-    commands.append({
-        "tool": "manage_gameobject",
+commands.append({
+        "tool": "scene_object",
         "params": {
             "action": "create",
             "name": f"Tree_{i}",
-            "primitive_type": "Capsule",
+            "primitive": "Capsule",
             "position": [random.uniform(-50, 50), 0, random.uniform(-50, 50)],
             "scale": [1, random.uniform(2, 5), 1]
         }
@@ -583,16 +554,8 @@ batch_execute(commands=commands, parallel=True)
 ### Cleanup Pattern
 
 ```python
-# Find all temporary objects
-temps = find_gameobjects(search_term="Temp_", search_method="by_name")
-
-# Delete in batch
-commands = [
-    {"tool": "manage_gameobject", "params": {"action": "delete", "target": id}}
-    for id in temps["ids"]
-]
-
-batch_execute(commands=commands, fail_fast=False)
+# Delete all temporary objects using regex (no need to find first)
+scene_object(action="delete", target_regex="Temp_.*")
 ```
 
 ---

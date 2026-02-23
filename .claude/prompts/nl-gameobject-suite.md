@@ -1,24 +1,23 @@
-# Unity GameObject API Test Suite — Tool/Resource Separation
+# Unity Scene Object API Test Suite
 
 You are running inside CI for the `unity-mcp` repo. Use only the tools allowed by the workflow. Work autonomously; do not prompt the user. Do NOT spawn subagents.
 
 **Print this once, verbatim, early in the run:**
-AllowedTools: Write,mcp__UnityMCP__manage_editor,mcp__UnityMCP__manage_gameobject,mcp__UnityMCP__find_gameobjects,mcp__UnityMCP__manage_components,mcp__UnityMCP__manage_scene,mcp__UnityMCP__read_console
+AllowedTools: Write,mcp__UnityMCP__manage_editor,mcp__UnityMCP__scene_object,mcp__UnityMCP__manage_scene,mcp__UnityMCP__read_console
 
 ---
 
 ## Mission
-1) Test the new Tool/Resource separation for GameObject management
+1) Test the unified scene_object tool for all GameObject interactions
 2) Execute GO tests GO-0..GO-10 in order
-3) Verify deprecation warnings appear for legacy actions
-4) **Report**: write one `<testcase>` XML fragment per test to `reports/<TESTID>_results.xml`
+3) **Report**: write one `<testcase>` XML fragment per test to `reports/<TESTID>_results.xml`
 
 **CRITICAL XML FORMAT REQUIREMENTS:**
 - Each file must contain EXACTLY one `<testcase>` root element
 - NO prologue, epilogue, code fences, or extra characters
 - Use this exact shape:
 
-<testcase name="GO-0 — Hierarchy with ComponentTypes" classname="UnityMCP.GO-T">
+<testcase name="GO-0 — List Objects" classname="UnityMCP.GO-T">
   <system-out><![CDATA[
 (evidence of what was accomplished)
   ]]></system-out>
@@ -31,112 +30,109 @@ AllowedTools: Write,mcp__UnityMCP__manage_editor,mcp__UnityMCP__manage_gameobjec
 
 ## Test Specs
 
-### GO-0. Hierarchy with ComponentTypes
-**Goal**: Verify get_hierarchy now includes componentTypes list
+### GO-0. List Objects
+**Goal**: Verify scene_object list action returns paginated results with object metadata
 **Actions**:
-- Call `mcp__UnityMCP__manage_scene(action="get_hierarchy", page_size=10)`
-- Verify response includes `componentTypes` array for each item in `data.items`
-- Check that Main Camera (or similar) has component types like `["Transform", "Camera", "AudioListener"]`
-- **Pass criteria**: componentTypes present and non-empty for at least one item
+- Call `mcp__UnityMCP__scene_object(action="list", page_size=10)`
+- Verify response includes `objects` array with `path`, `name`, `instance_id`, `component_types`
+- Verify pagination info (`total`, `page_size`, `has_more`)
+- **Pass criteria**: Returns at least one object with non-empty component_types
 
-### GO-1. Find GameObjects Tool
-**Goal**: Test the new find_gameobjects tool
+### GO-1. List with Filters
+**Goal**: Test filtering by component and tag
 **Actions**:
-- Call `mcp__UnityMCP__find_gameobjects(search_term="Camera", search_method="by_component")`
-- Verify response contains `instanceIDs` array in `data`
-- Verify response contains pagination info (`pageSize`, `cursor`, `totalCount`)
-- **Pass criteria**: Returns at least one instance ID
+- Call `mcp__UnityMCP__scene_object(action="list", component="Camera")`
+- Verify response contains at least one object with Camera component
+- **Pass criteria**: Filtered list returns matching objects
 
-### GO-2. GameObject Resource Read
-**Goal**: Test reading a single GameObject via resource
+### GO-2. Get Object Details
+**Goal**: Test getting full object data
 **Actions**:
-- Use the instance ID from GO-1
-- Call `mcp__UnityMCP__read_resource(uri="mcpforunity://scene/gameobject/{instanceID}")` replacing {instanceID} with the actual ID
-- Verify response includes: instanceID, name, tag, layer, transform, path
-- **Pass criteria**: All expected fields present
+- Call `mcp__UnityMCP__scene_object(action="get", target="Main Camera", components=true)`
+- Verify response includes: path, name, instance_id, transform, tag, layer, components
+- Verify component data includes Camera, Transform, AudioListener
+- **Pass criteria**: All expected fields present with component data
 
-### GO-3. Components Resource Read  
-**Goal**: Test reading components via resource
+### GO-3. Create Object
+**Goal**: Test creating a primitive GameObject
 **Actions**:
-- Use the instance ID from GO-1
-- Call `mcp__UnityMCP__read_resource(uri="mcpforunity://scene/gameobject/{instanceID}/components")` replacing {instanceID} with the actual ID
-- Verify response includes paginated component list in `data.items`
-- Verify at least one component has typeName and instanceID
-- **Pass criteria**: Components list returned with proper pagination
+- Call `mcp__UnityMCP__scene_object(action="create", name="GO_Test_Object", primitive="Cube", position=[0, 1, 0])`
+- Verify response includes path and instance_id
+- Call `mcp__UnityMCP__scene_object(action="get", target="GO_Test_Object")` to verify it exists
+- **Pass criteria**: Object created at correct position with MeshRenderer component
 
-### GO-4. Manage Components Tool - Add and Set Property
-**Goal**: Test the new manage_components tool (add component, set property)
+### GO-4. Set Properties and Add Components
+**Goal**: Test modifying object properties and adding components
 **Actions**:
-- Create a test GameObject: `mcp__UnityMCP__manage_gameobject(action="create", name="GO_Test_Object")`
-- Add a component: `mcp__UnityMCP__manage_components(action="add", target="GO_Test_Object", component_type="Rigidbody")`
-- Set a property: `mcp__UnityMCP__manage_components(action="set_property", target="GO_Test_Object", component_type="Rigidbody", properties={"mass": 5.0})`
-- Verify the component was added and property was set
-- **Pass criteria**: Component added, property set successfully
-- **Note**: Keep GO_Test_Object for GO-5 through GO-8
+- Call `mcp__UnityMCP__scene_object(action="set", target="GO_Test_Object", add_components=["Rigidbody"], tag="TestTag", position=[5, 2, 0])`
+- Verify changes list includes "add_component:Rigidbody", "tag", "position"
+- Call `mcp__UnityMCP__scene_object(action="get", target="GO_Test_Object", components=true)` to verify state
+- **Pass criteria**: Component added, tag set, position updated
 
-### GO-5. Find GameObjects by Name
-**Goal**: Test find_gameobjects with by_name search method
+### GO-5. Set Component Properties
+**Goal**: Test setting properties on a component
 **Actions**:
-- Call `mcp__UnityMCP__find_gameobjects(search_term="GO_Test_Object", search_method="by_name")`
-- Verify response contains the GameObject created in GO-4
-- Verify pagination info is present
-- **Pass criteria**: Returns at least one instance ID matching GO_Test_Object
+- Call `mcp__UnityMCP__scene_object(action="set", target="GO_Test_Object", component="Rigidbody", properties={"mass": 5.0, "useGravity": false})`
+- Verify the component properties were set
+- **Pass criteria**: Rigidbody mass is 5.0 and useGravity is false
 
-### GO-6. Find GameObjects by Tag
-**Goal**: Test find_gameobjects with by_tag search method
+### GO-6. List by Tag
+**Goal**: Test listing objects filtered by tag
 **Actions**:
-- Set a tag on GO_Test_Object: `mcp__UnityMCP__manage_gameobject(action="modify", target="GO_Test_Object", tag="TestTag")`
-- Call `mcp__UnityMCP__find_gameobjects(search_term="TestTag", search_method="by_tag")`
-- Verify response contains the tagged GameObject
-- **Pass criteria**: Returns at least one instance ID
+- Call `mcp__UnityMCP__scene_object(action="list", tag="TestTag")`
+- Verify response contains GO_Test_Object
+- **Pass criteria**: Returns at least one object with tag "TestTag"
 
-### GO-7. Single Component Resource Read
-**Goal**: Test reading a single component via resource
+### GO-7. Duplicate Object
+**Goal**: Test duplicating a GameObject
 **Actions**:
-- Get instance ID of GO_Test_Object from GO-5
-- Call `mcp__UnityMCP__read_resource(uri="mcpforunity://scene/gameobject/{instanceID}/component/Rigidbody")` replacing {instanceID}
-- Verify response includes component data with typeName="Rigidbody"
-- Verify mass property is 5.0 (set in GO-4)
-- **Pass criteria**: Component data returned with correct properties
+- Call `mcp__UnityMCP__scene_object(action="duplicate", target="GO_Test_Object", name="GO_Test_Copy", offset=[3, 0, 0])`
+- Verify response includes source and duplicate info
+- Call `mcp__UnityMCP__scene_object(action="get", target="GO_Test_Copy")` to verify it exists
+- **Pass criteria**: Duplicate created with correct name and offset position
 
 ### GO-8. Remove Component
-**Goal**: Test manage_components remove action
+**Goal**: Test removing a component
 **Actions**:
-- Remove the Rigidbody from GO_Test_Object: `mcp__UnityMCP__manage_components(action="remove", target="GO_Test_Object", component_type="Rigidbody")`
-- Verify the component was removed by attempting to read it again
+- Call `mcp__UnityMCP__scene_object(action="set", target="GO_Test_Object", remove_components=["Rigidbody"])`
+- Verify changes list includes "remove_component:Rigidbody"
 - **Pass criteria**: Component successfully removed
 
-### GO-9. Find with Pagination
-**Goal**: Test find_gameobjects pagination
+### GO-9. List with Pagination
+**Goal**: Test pagination
 **Actions**:
-- Call `mcp__UnityMCP__find_gameobjects(search_term="", search_method="by_name", page_size=2)`
-- Verify response includes cursor for next page
-- If cursor is present, call again with the cursor to get next page
-- Clean up: `mcp__UnityMCP__manage_gameobject(action="delete", target="GO_Test_Object")`
-- **Pass criteria**: Pagination works (cursor present when more results available)
+- Call `mcp__UnityMCP__scene_object(action="list", page_size=2)`
+- If has_more is true, call again with cursor from next_cursor
+- Verify second page returns different objects
+- **Pass criteria**: Pagination works (next_cursor present when more results available)
 
-### GO-10. Removed Actions Return Error
-**Goal**: Verify legacy actions (find, get_components, etc.) return clear errors directing to new tools
+### GO-10. Delete and Cleanup
+**Goal**: Test delete action
 **Actions**:
-- Call removed action: `mcp__UnityMCP__manage_gameobject(action="find", search_term="Camera", search_method="by_component")`
-- Verify response contains error indicating action is unknown/removed
-- **Pass criteria**: Error response received (legacy actions were removed, not deprecated)
+- Call `mcp__UnityMCP__scene_object(action="delete", target="GO_Test_Copy")`
+- Call `mcp__UnityMCP__scene_object(action="delete", target="GO_Test_Object")`
+- Verify both return success
+- **Pass criteria**: Both objects successfully deleted
 
 ---
 
 ## Tool Reference
 
-### New Tools
-- `find_gameobjects(search_term, search_method, page_size?, cursor?, search_inactive?)` - Returns instance IDs only
-- `manage_components(action, target, component_type?, properties?)` - Add/remove/set_property/get_all/get_single
+### scene_object
+Unified tool for all GameObject interactions:
+- `scene_object(action="list", tag?, component?, layer?, parent?, target_regex?, depth?, page_size?, cursor?)` - Find objects
+- `scene_object(action="get", target, components?)` - Read object data
+- `scene_object(action="set", target, ...)` - Modify properties, add/remove components
+- `scene_object(action="create", name, primitive?, position?, ...)` - Create GameObjects
+- `scene_object(action="delete", target)` - Delete single object
+- `scene_object(action="delete", target_regex?)` - Batch delete
+- `scene_object(action="duplicate", target, name?, offset?)` - Clone objects
+- `scene_object(action="move_relative", target, reference, direction?, offset?)` - Relative positioning
 
-### New Resources  
+### Resources
 - `mcpforunity://scene/gameobject/{instanceID}` - Single GameObject data
 - `mcpforunity://scene/gameobject/{instanceID}/components` - All components (paginated)
 - `mcpforunity://scene/gameobject/{instanceID}/component/{componentName}` - Single component
-
-### Updated Resources
-- `manage_scene(action="get_hierarchy")` - Now includes `componentTypes` array in each item
 
 ---
 
@@ -146,4 +142,3 @@ AllowedTools: Write,mcp__UnityMCP__manage_editor,mcp__UnityMCP__manage_gameobjec
 - Console evidence: include ≤ 3 lines in the fragment
 
 ---
-

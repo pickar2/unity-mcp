@@ -141,7 +141,7 @@ mcpforunity://{category}/{resource_path}[?query_params]
 **Purpose:** Basic GameObject data (metadata, no component properties).
 
 **Parameters:**
-- `instance_id` (int): GameObject instance ID from `find_gameobjects`
+- `instance_id` (int): GameObject instance ID from `scene_object(action="list")` or `scene_object(action="get")`
 
 **Returns:**
 ```json
@@ -461,8 +461,8 @@ Assets/Prefabs/Player.prefab → Assets%2FPrefabs%2FPlayer.prefab
 ### 2. Use Find Then Read Pattern
 
 ```python
-# 1. find_gameobjects to get IDs
-result = find_gameobjects(search_term="Player")
+# 1. scene_object list to get IDs
+result = scene_object(action="list", target_regex="Player")
 
 # 2. Read resource for full data
 # mcpforunity://scene/gameobject/{id}

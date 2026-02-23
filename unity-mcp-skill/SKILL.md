@@ -14,8 +14,8 @@ This skill helps you effectively use the Unity Editor with MCP tools and resourc
 ```
 1. Check editor state     → mcpforunity://editor/state
 2. Understand the scene   → mcpforunity://scene/gameobject-api
-3. Find what you need     → find_gameobjects or resources
-4. Take action            → tools (manage_gameobject, create_script, script_apply_edits, apply_text_edits, validate_script, delete_script, get_sha, etc.)
+3. Find what you need     → scene_object(action="list") or resources
+4. Take action            → tools (scene_object, create_script, script_apply_edits, apply_text_edits, validate_script, delete_script, get_sha, etc.)
 5. Verify results         → read_console, capture_screenshot (in manage_scene), resources
 ```
 
@@ -37,9 +37,9 @@ read_console(types=["error"], count=10, include_stacktrace=True)
 # 10-100x faster than sequential calls
 batch_execute(
     commands=[
-        {"tool": "manage_gameobject", "params": {"action": "create", "name": "Cube1", "primitive_type": "Cube"}},
-        {"tool": "manage_gameobject", "params": {"action": "create", "name": "Cube2", "primitive_type": "Cube"}},
-        {"tool": "manage_gameobject", "params": {"action": "create", "name": "Cube3", "primitive_type": "Cube"}}
+        {"tool": "scene_object", "params": {"action": "create", "name": "Cube1", "primitive": "Cube"}},
+        {"tool": "scene_object", "params": {"action": "create", "name": "Cube2", "primitive": "Cube"}},
+        {"tool": "scene_object", "params": {"action": "create", "name": "Cube3", "primitive": "Cube"}}
     ],
     parallel=True  # Read-only operations can run in parallel
 )
@@ -117,8 +117,8 @@ uri="file:///full/path/to/file.cs"
 
 | Category | Key Tools | Use For |
 |----------|-----------|---------|
-| **Scene** | `manage_scene`, `find_gameobjects` | Scene operations, finding objects |
-| **Objects** | `manage_gameobject`, `manage_components` | Creating/modifying GameObjects |
+| **Scene** | `manage_scene`, `scene_object` | Scene operations, finding objects |
+| **Objects** | `scene_object` | Creating/modifying/deleting GameObjects |
 | **Scripts** | `create_script`, `script_apply_edits`, `refresh_unity` | C# code management |
 | **Assets** | `manage_asset`, `manage_prefabs` | Asset operations |
 | **Editor** | `manage_editor`, `execute_menu_item`, `read_console` | Editor control |
@@ -143,20 +143,20 @@ refresh_unity(mode="force", scope="scripts", compile="request", wait_for_ready=T
 read_console(types=["error"], count=10)
 
 # 4. Only then attach to GameObject
-manage_gameobject(action="modify", target="Player", components_to_add=["PlayerController"])
+scene_object(action="set", target="Player", add_components=["PlayerController"])
 ```
 
 ### Finding and Modifying GameObjects
 
 ```python
-# 1. Find by name/tag/component (returns IDs only)
-result = find_gameobjects(search_term="Enemy", search_method="by_tag", page_size=50)
+# 1. Find by tag (returns paths, names, IDs)
+result = scene_object(action="list", tag="Enemy", page_size=50)
 
-# 2. Get full data via resource
-# mcpforunity://scene/gameobject/{instance_id}
+# 2. Get full data for a specific object
+scene_object(action="get", target="Enemy", components=True)
 
-# 3. Modify using the ID
-manage_gameobject(action="modify", target=instance_id, position=[10, 0, 0])
+# 3. Modify using name, path, or instance ID
+scene_object(action="set", target="Enemy", position=[10, 0, 0])
 ```
 
 ### Running and Monitoring Tests

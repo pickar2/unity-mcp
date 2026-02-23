@@ -90,124 +90,77 @@ manage_scene(action="load", path="Assets/Scenes/Main.unity")           # blocked
 manage_scene(action="save")                                             # blocked in play mode
 ```
 
-### find_gameobjects
-
-Search for GameObjects (returns instance IDs only).
-
-```python
-find_gameobjects(
-    search_term="Player",        # str, required (alias: name)
-    search_method="by_name",     # "by_name"|"by_tag"|"by_layer"|"by_component"|"by_path"|"by_id"
-                                 # (alias: search_type)
-    include_inactive=False,      # bool|str
-    page_size=50,                # int, default 50, max 500
-    cursor=0                     # int, pagination cursor
-)
-# Returns: {"ids": [12345, 67890], "next_cursor": 50, ...}
-```
-
 ---
 
-## GameObject Tools
+## Scene Object Tool
 
-### manage_gameobject
+### scene_object
 
-Create, modify, delete, duplicate GameObjects.
+Unified tool for all GameObject interactions — list, get, set, create, delete, duplicate, move.
 
 ```python
+# List objects with filtering
+scene_object(action="list", tag="Enemy", depth=0, page_size=50)
+scene_object(action="list", component="Rigidbody", layer="Water")
+scene_object(action="list", parent="Canvas", target_regex=".*Button")
+
+# Get object details
+scene_object(action="get", target="Player")                    # by name
+scene_object(action="get", target="Canvas/Panel/Button")       # by path
+scene_object(action="get", target=12345, components=True)      # by instance ID, with component data
+
 # Create
-manage_gameobject(
+scene_object(
     action="create",
-    name="MyCube",               # str, required
-    primitive_type="Cube",       # "Cube"|"Sphere"|"Capsule"|"Cylinder"|"Plane"|"Quad"
-    position=[0, 1, 0],          # list[float] or JSON string "[0,1,0]"
-    rotation=[0, 45, 0],         # euler angles
+    name="MyCube",
+    primitive="Cube",            # "Cube"|"Sphere"|"Capsule"|"Cylinder"|"Plane"|"Quad"
+    position=[0, 1, 0],         # local coordinates
+    rotation=[0, 45, 0],
     scale=[1, 1, 1],
-    components_to_add=["Rigidbody", "BoxCollider"],
-    save_as_prefab=False,
-    prefab_path="Assets/Prefabs/MyCube.prefab"
+    components=["Rigidbody", "BoxCollider"],
+    tag="Player",               # auto-creates missing tags
+    parent="Environment"
 )
 
-# Modify
-manage_gameobject(
-    action="modify",
+# Set properties (single object)
+scene_object(
+    action="set",
     target="Player",             # name, path, or instance ID
-    search_method="by_name",     # how to find target
     position=[10, 0, 0],
-    rotation=[0, 90, 0],
-    scale=[2, 2, 2],
-    set_active=True,
+    active=True,
+    tag="Player",
     layer="Player",
-    components_to_add=["AudioSource"],
-    components_to_remove=["OldComponent"],
-    component_properties={       # nested dict for property setting
-        "Rigidbody": {
-            "mass": 10.0,
-            "useGravity": True
-        }
+    add_components=["AudioSource"],
+    remove_components=["OldComponent"],
+    component_properties={
+        "Rigidbody": {"mass": 10.0, "useGravity": True}
     }
 )
 
+# Set properties (batch)
+scene_object(action="set", target_regex=".*Enemy", active=False)
+scene_object(action="set", tag="Temp", active=False)
+
 # Delete
-manage_gameobject(action="delete", target="OldObject")
+scene_object(action="delete", target="OldObject")
+scene_object(action="delete", target_regex=".*Temp.*")         # batch delete
 
 # Duplicate
-manage_gameobject(
+scene_object(
     action="duplicate",
     target="Player",
-    new_name="Player2",
-    offset=[5, 0, 0]             # position offset from original
+    name="Player2",
+    offset=[5, 0, 0]            # position offset from original
 )
 
 # Move relative
-manage_gameobject(
+scene_object(
     action="move_relative",
     target="Player",
-    reference_object="Enemy",    # optional reference
+    reference="Enemy",
     direction="left",            # "left"|"right"|"up"|"down"|"forward"|"back"
     distance=5.0,
     world_space=True
-)
-```
-
-### manage_components
-
-Add, remove, or set properties on components.
-
-```python
-# Add component
-manage_components(
-    action="add",
-    target=12345,                # instance ID (preferred) or name
-    component_type="Rigidbody",
-    search_method="by_id"
-)
-
-# Remove component
-manage_components(
-    action="remove",
-    target="Player",
-    component_type="OldScript"
-)
-
-# Set single property
-manage_components(
-    action="set_property",
-    target=12345,
-    component_type="Rigidbody",
-    property="mass",
-    value=5.0
-)
-
-# Set multiple properties
-manage_components(
-    action="set_property",
-    target=12345,
-    component_type="Transform",
-    properties={
-        "position": [1, 2, 3],
-        "localScale": [2, 2, 2]
-    }
 )
 ```
 
@@ -736,4 +689,4 @@ Some tools are blocked or behave differently during play mode:
 | `manage_editor` | `recompile=true` blocked while already playing |
 | `inspect_buffer` | **Requires** play mode (blocked outside play mode) |
 
-Read-only operations (get_hierarchy, find_gameobjects, read_console, resources, etc.) work in both modes.
+Read-only operations (get_hierarchy, scene_object list/get, read_console, resources, etc.) work in both modes.

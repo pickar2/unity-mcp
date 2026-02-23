@@ -862,8 +862,12 @@ namespace MCPForUnity.Editor.Tools
             if (!string.IsNullOrEmpty(parentPath))
             {
                 var newParent = ResolveTarget(parentPath);
-                if (newParent != null)
-                    duplicatedGo.transform.SetParent(newParent.transform, true);
+                if (newParent == null)
+                {
+                    Undo.DestroyObjectImmediate(duplicatedGo);
+                    return new ErrorResponse($"Parent '{parentPath}' not found.");
+                }
+                duplicatedGo.transform.SetParent(newParent.transform, true);
             }
             else
             {
@@ -1065,6 +1069,10 @@ namespace MCPForUnity.Editor.Tools
 
         private static GameObject FindByPath(string path)
         {
+            // Strip leading / since GetGameObjectPath returns paths without it
+            if (path.StartsWith("/"))
+                path = path.Substring(1);
+
             foreach (var go in GameObjectLookup.GetAllSceneObjects(true))
             {
                 if (GetGameObjectPath(go) == path)

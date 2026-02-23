@@ -46,10 +46,6 @@
       "description": "Execute Unity Editor menu items"
     },
     {
-      "name": "find_gameobjects",
-      "description": "Find GameObjects in the scene by various criteria"
-    },
-    {
       "name": "find_in_file",
       "description": "Search for content within Unity project files"
     },
@@ -58,16 +54,8 @@
       "description": "Create, modify, search, and organize Unity assets"
     },
     {
-      "name": "manage_components",
-      "description": "Add, remove, and configure GameObject components"
-    },
-    {
       "name": "manage_editor",
       "description": "Control Unity Editor state, play mode, and preferences"
-    },
-    {
-      "name": "manage_gameobject",
-      "description": "Create, modify, transform, and delete GameObjects"
     },
     {
       "name": "manage_material",
@@ -108,6 +96,10 @@
     {
       "name": "run_tests",
       "description": "Run Unity Test Framework tests"
+    },
+    {
+      "name": "scene_object",
+      "description": "Interact with GameObjects in the Unity scene - list, get, set, create, delete, duplicate, move"
     },
     {
       "name": "get_test_job",

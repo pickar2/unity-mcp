@@ -619,8 +619,8 @@ For advanced usage, send raw tool calls:
 ```bash
 # Send any MCP tool directly
 unity-mcp raw manage_scene '{"action": "get_active"}'
-unity-mcp raw manage_gameobject '{"action": "create", "name": "Test"}'
-unity-mcp raw manage_components '{"action": "add", "target": "Test", "componentType": "Rigidbody"}'
+unity-mcp raw scene_object '{"action": "create", "name": "Test"}'
+unity-mcp raw scene_object '{"action": "set", "target": "Test", "add_components": ["Rigidbody"]}'
 unity-mcp raw manage_editor '{"action": "play"}'
 ```
 

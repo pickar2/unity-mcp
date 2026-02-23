@@ -219,6 +219,19 @@ def set_object(
         print_error("TARGET is required for single object mode.")
         return
 
+    if is_batch and set_tag:
+        print_error(
+            "Cannot use --set-tag in batch mode (conflicts with --tag batch selector). "
+            "Use --regex for batch selection instead, or run separate set commands."
+        )
+        return
+    if is_batch and reparent:
+        print_error(
+            "Cannot use --reparent in batch mode (conflicts with --parent batch selector). "
+            "Use --regex for batch selection instead, or run separate set commands."
+        )
+        return
+
     params: dict[str, Any] = {"action": "set"}
 
     if target:

@@ -234,7 +234,7 @@ namespace MCPForUnity.Editor.Tools
                     // Creating prefabs usually involves saving an existing GameObject hierarchy.
                     // A common pattern is to create an empty GameObject, configure it, and then save it.
                     return new ErrorResponse(
-                        "Creating prefabs programmatically usually requires a source GameObject. Use manage_gameobject to create/configure, then save as prefab via a separate mechanism or future enhancement."
+                        "Creating prefabs programmatically usually requires a source GameObject. Use scene_object to create/configure, then save as prefab via manage_prefabs."
                     );
                     // Example (conceptual):
                     // GameObject source = GameObject.Find(properties["sourceGameObject"].ToString());
