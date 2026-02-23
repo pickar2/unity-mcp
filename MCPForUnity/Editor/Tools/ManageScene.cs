@@ -377,7 +377,7 @@ namespace MCPForUnity.Editor.Tools
 
                 // Check Screen Capture module availability and warn if not available
                 bool screenCaptureAvailable = ScreenshotUtility.IsScreenCaptureModuleAvailable;
-                bool hasCameraFallback = Camera.main != null || UnityEngine.Object.FindObjectsByType<Camera>(UnityEngine.FindObjectSortMode.None).Length > 0;
+                bool hasCameraFallback = Camera.main != null || UnityEngine.Object.FindObjectsByType<Camera>(UnityEngine.FindObjectsSortMode.None).Length > 0;
 
 #if UNITY_2022_1_OR_NEWER
                 if (!screenCaptureAvailable && !hasCameraFallback)
