@@ -23,6 +23,7 @@ def scene_obj():
 @click.option(
     "--component", "-c", default=None, help="Filter to objects having this component."
 )
+@click.option("--layer", default=None, help="Filter by layer (number or name).")
 @click.option(
     "--depth",
     "-d",
@@ -43,6 +44,7 @@ def list_objects(
     tag: Optional[str],
     parent: Optional[str],
     component: Optional[str],
+    layer: Optional[str],
     depth: int,
     include_inactive: bool,
     limit: int,
@@ -57,6 +59,7 @@ def list_objects(
         unity-mcp scene-obj list --parent /Canvas --depth 2
         unity-mcp scene-obj list --regex ".*Enemy.*"
         unity-mcp scene-obj list --component Rigidbody
+        unity-mcp scene-obj list --layer Water
     """
     config = get_config()
 
@@ -76,6 +79,8 @@ def list_objects(
         params["parent"] = parent
     if component:
         params["component"] = component
+    if layer:
+        params["layer"] = layer
 
     result = run_command("scene_object", params, config)
     click.echo(format_output(result, config.format))
@@ -132,7 +137,7 @@ def get_object(target: str, components: bool):
     nargs=3,
     type=float,
     default=None,
-    help="World position as X Y Z.",
+    help="Local position as X Y Z.",
 )
 @click.option(
     "--rotation",
@@ -140,19 +145,36 @@ def get_object(target: str, components: bool):
     nargs=3,
     type=float,
     default=None,
-    help="Euler rotation as X Y Z.",
+    help="Local euler rotation as X Y Z.",
 )
 @click.option(
-    "--scale", "-s", nargs=3, type=float, default=None, help="Scale as X Y Z."
+    "--scale", "-s", nargs=3, type=float, default=None, help="Local scale as X Y Z."
 )
 @click.option("--reparent", default=None, help="New parent path.")
-@click.option("--set-tag", default=None, help="New tag.")
+@click.option("--set-tag", default=None, help="New tag (auto-creates if missing).")
 @click.option("--layer", default=None, help="New layer (number or name).")
-@click.option("--component", default=None, help="Component type to modify.")
+@click.option(
+    "--component", default=None, help="Component type to modify properties on."
+)
 @click.option(
     "--properties",
     default=None,
-    help="Properties to set as JSON. E.g., '{\"mass\": 10}'",
+    help="Properties to set on --component as JSON. E.g., '{\"mass\": 10}'",
+)
+@click.option(
+    "--add-components",
+    default=None,
+    help="Comma-separated list of components to add.",
+)
+@click.option(
+    "--remove-components",
+    default=None,
+    help="Comma-separated list of components to remove.",
+)
+@click.option(
+    "--component-properties",
+    default=None,
+    help='JSON dict of component properties: \'{"Rigidbody": {"mass": 10}, "Collider": {"isTrigger": true}}\'',
 )
 @handle_unity_errors
 def set_object(
@@ -170,6 +192,9 @@ def set_object(
     layer: Optional[str],
     component: Optional[str],
     properties: Optional[str],
+    add_components: Optional[str],
+    remove_components: Optional[str],
+    component_properties: Optional[str],
 ):
     """Modify a GameObject (single or batch).
 
@@ -180,8 +205,11 @@ def set_object(
         unity-mcp scene-obj set Player --active
         unity-mcp scene-obj set Player --position 10 0 5
         unity-mcp scene-obj set /Player --component Rigidbody --properties '{"mass": 10}'
-        unity-mcp scene-obj set --regex ".*Enemy" --active false
-        unity-mcp scene-obj set --tag Enemy --active false
+        unity-mcp scene-obj set Player --add-components Rigidbody,BoxCollider
+        unity-mcp scene-obj set Player --remove-components BoxCollider
+        unity-mcp scene-obj set Player --component-properties '{"Rigidbody": {"mass": 10}}'
+        unity-mcp scene-obj set --regex ".*Enemy" --inactive
+        unity-mcp scene-obj set --tag Enemy --inactive
     """
     config = get_config()
 
@@ -224,6 +252,16 @@ def set_object(
             params["properties"] = json.loads(properties)
         except json.JSONDecodeError as e:
             print_error(f"Invalid JSON properties: {e}")
+            return
+    if add_components:
+        params["add_components"] = [c.strip() for c in add_components.split(",")]
+    if remove_components:
+        params["remove_components"] = [c.strip() for c in remove_components.split(",")]
+    if component_properties:
+        try:
+            params["component_properties"] = json.loads(component_properties)
+        except json.JSONDecodeError as e:
+            print_error(f"Invalid JSON component_properties: {e}")
             return
 
     result = run_command("scene_object", params, config)
@@ -399,3 +437,161 @@ def delete_object(
             print_success(f"Deleted {count} objects")
         else:
             print_success(f"Deleted object '{target}'")
+
+
+@scene_obj.command("duplicate")
+@click.argument("target")
+@click.option(
+    "--name",
+    "-n",
+    default=None,
+    help="Name for the duplicate. Default: <original>_Copy.",
+)
+@click.option(
+    "--offset",
+    "-o",
+    nargs=3,
+    type=float,
+    default=None,
+    help="Position offset from original as X Y Z.",
+)
+@click.option(
+    "--position",
+    "-pos",
+    nargs=3,
+    type=float,
+    default=None,
+    help="Absolute position for the duplicate as X Y Z.",
+)
+@click.option("--parent", "-p", default=None, help="Parent path for the duplicate.")
+@handle_unity_errors
+def duplicate_object(
+    target: str,
+    name: Optional[str],
+    offset: Optional[Tuple[float, float, float]],
+    position: Optional[Tuple[float, float, float]],
+    parent: Optional[str],
+):
+    """Duplicate a GameObject.
+
+    TARGET can be name, path (with /), or instance ID.
+
+    \b
+    Examples:
+        unity-mcp scene-obj duplicate Player
+        unity-mcp scene-obj duplicate Player --name Player2
+        unity-mcp scene-obj duplicate /Enemies/Enemy --offset 5 0 0
+        unity-mcp scene-obj duplicate Player --position 10 0 5 --parent /Team
+    """
+    config = get_config()
+
+    params: dict[str, Any] = {
+        "action": "duplicate",
+        "target": target,
+    }
+
+    if name:
+        params["name"] = name
+    if offset:
+        params["offset"] = list(offset)
+    if position:
+        params["position"] = list(position)
+    if parent:
+        params["parent"] = parent
+
+    result = run_command("scene_object", params, config)
+    click.echo(format_output(result, config.format))
+
+    if result.get("success"):
+        data = result.get("data", {})
+        dup = data.get("duplicate", {})
+        print_success(f"Duplicated '{target}' as '{dup.get('name', '?')}'")
+
+
+@scene_obj.command("move")
+@click.argument("target")
+@click.option(
+    "--reference", "-r", required=True, help="Reference object for relative movement."
+)
+@click.option(
+    "--direction",
+    "-d",
+    type=click.Choice(
+        [
+            "left",
+            "right",
+            "up",
+            "down",
+            "forward",
+            "back",
+            "front",
+            "backward",
+            "behind",
+        ],
+        case_sensitive=False,
+    ),
+    default=None,
+    help="Direction to move relative to reference.",
+)
+@click.option(
+    "--distance", type=float, default=1.0, help="Distance to move. Default: 1.0."
+)
+@click.option(
+    "--offset",
+    "-o",
+    nargs=3,
+    type=float,
+    default=None,
+    help="Custom offset from reference as X Y Z (instead of direction).",
+)
+@click.option(
+    "--local",
+    is_flag=True,
+    help="Use reference object's local space instead of world space.",
+)
+@handle_unity_errors
+def move_object(
+    target: str,
+    reference: str,
+    direction: Optional[str],
+    distance: float,
+    offset: Optional[Tuple[float, float, float]],
+    local: bool,
+):
+    """Move a GameObject relative to a reference object.
+
+    TARGET can be name, path (with /), or instance ID.
+
+    Either --direction or --offset is required.
+
+    \b
+    Examples:
+        unity-mcp scene-obj move Chair --reference Table --direction right --distance 2
+        unity-mcp scene-obj move Lamp --reference Desk --offset 1 0.5 0
+        unity-mcp scene-obj move NPC --reference Player --direction forward --distance 5 --local
+    """
+    config = get_config()
+
+    if not direction and not offset:
+        print_error("Either --direction or --offset is required.")
+        return
+
+    params: dict[str, Any] = {
+        "action": "move_relative",
+        "target": target,
+        "reference": reference,
+    }
+
+    if direction:
+        params["direction"] = direction
+        params["distance"] = distance
+    if offset:
+        params["offset"] = list(offset)
+    if local:
+        params["world_space"] = False
+
+    result = run_command("scene_object", params, config)
+    click.echo(format_output(result, config.format))
+
+    if result.get("success"):
+        print_success(f"Moved '{target}' relative to '{reference}'")

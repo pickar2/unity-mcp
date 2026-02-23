@@ -3,9 +3,11 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Text.RegularExpressions;
 using MCPForUnity.Editor.Helpers;
+using MCPForUnity.Editor.Tools.GameObjects;
 using Newtonsoft.Json.Linq;
 using UnityEditor;
 using UnityEditor.SceneManagement;
+using UnityEditorInternal;
 using UnityEngine;
 using UnityEngine.SceneManagement;
 
@@ -31,7 +33,9 @@ namespace MCPForUnity.Editor.Tools
                     "set" => HandleSet(@params, p),
                     "create" => HandleCreate(@params, p),
                     "delete" => HandleDelete(@params, p),
-                    _ => new ErrorResponse($"Unknown action: '{action}'. Valid actions: list, get, set, create, delete.")
+                    "duplicate" => HandleDuplicate(@params, p),
+                    "move_relative" => HandleMoveRelative(@params, p),
+                    _ => new ErrorResponse($"Unknown action: '{action}'. Valid actions: list, get, set, create, delete, duplicate, move_relative.")
                 };
             }
             catch (Exception e)
@@ -53,9 +57,10 @@ namespace MCPForUnity.Editor.Tools
             string tag = p.Get("tag");
             string parent = p.Get("parent");
             string component = p.Get("component");
+            string layer = p.Get("layer");
             bool includeInactive = p.GetBool("include_inactive", true);
             int depth = p.GetInt("depth", 1) ?? 1;
-            
+
             var pagination = PaginationRequest.FromParams(@params, defaultPageSize: 50);
             pagination.PageSize = Mathf.Clamp(pagination.PageSize, 1, 500);
 
@@ -64,7 +69,7 @@ namespace MCPForUnity.Editor.Tools
 
             if (!string.IsNullOrEmpty(parent))
             {
-                parentGo = ResolveTarget(parent, false);
+                parentGo = ResolveTarget(parent);
                 if (parentGo == null)
                     return new ErrorResponse($"Parent '{parent}' not found.");
             }
@@ -77,18 +82,21 @@ namespace MCPForUnity.Editor.Tools
             {
                 foreach (var root in scene.GetRootGameObjects())
                 {
+                    if (!includeInactive && !root.activeInHierarchy)
+                        continue;
+                    allObjects.Add(root);
                     if (depth == 0)
                     {
                         CollectAllDescendants(root.transform, allObjects, includeInactive);
                     }
-                    else if (depth >= 1)
+                    else if (depth > 1)
                     {
-                        CollectToDepth(root.transform, allObjects, includeInactive, depth);
+                        CollectToDepth(root.transform, allObjects, includeInactive, depth - 1);
                     }
                 }
             }
 
-            var filtered = ApplyFilters(allObjects, targetRegex, tag, component);
+            var filtered = ApplyFilters(allObjects, targetRegex, tag, component, layer);
 
             var resultObjects = filtered
                 .Skip(pagination.Cursor)
@@ -149,7 +157,7 @@ namespace MCPForUnity.Editor.Tools
             }
         }
 
-        private static List<GameObject> ApplyFilters(List<GameObject> objects, string targetRegex, string tag, string component)
+        private static List<GameObject> ApplyFilters(List<GameObject> objects, string targetRegex, string tag, string component, string layer)
         {
             var result = objects;
 
@@ -168,7 +176,11 @@ namespace MCPForUnity.Editor.Tools
 
             if (!string.IsNullOrEmpty(tag))
             {
-                result = result.Where(go => go.CompareTag(tag)).ToList();
+                result = result.Where(go =>
+                {
+                    try { return go.CompareTag(tag); }
+                    catch { return false; }
+                }).ToList();
             }
 
             if (!string.IsNullOrEmpty(component))
@@ -177,6 +189,22 @@ namespace MCPForUnity.Editor.Tools
                 if (componentType == null)
                     throw new Exception($"Component type '{component}' not found.");
                 result = result.Where(go => go.GetComponent(componentType) != null).ToList();
+            }
+
+            if (!string.IsNullOrEmpty(layer))
+            {
+                int layerId;
+                if (int.TryParse(layer, out layerId))
+                {
+                    // Numeric layer
+                }
+                else
+                {
+                    layerId = LayerMask.NameToLayer(layer);
+                    if (layerId == -1)
+                        throw new Exception($"Layer '{layer}' not found.");
+                }
+                result = result.Where(go => go.layer == layerId).ToList();
             }
 
             return result;
@@ -214,14 +242,14 @@ namespace MCPForUnity.Editor.Tools
                 return resolveResult.Error;
 
             var go = resolveResult.GameObject;
-            
+
             return new SuccessResponse($"Retrieved object '{go.name}'.", BuildObjectDetail(go, includeComponents));
         }
 
         private static object BuildObjectDetail(GameObject go, bool includeComponents)
         {
             var t = go.transform;
-            
+
             var result = new Dictionary<string, object>
             {
                 ["path"] = GetGameObjectPath(go),
@@ -260,7 +288,7 @@ namespace MCPForUnity.Editor.Tools
             foreach (var comp in go.GetComponents<Component>())
             {
                 if (comp == null) continue;
-                list.Add(PropertySerializer.SerializeComponent(comp));
+                list.Add(GameObjectSerializer.GetComponentData(comp));
             }
             return list;
         }
@@ -286,12 +314,15 @@ namespace MCPForUnity.Editor.Tools
             if (targetToken == null)
                 return new ErrorResponse("'target' parameter is required for 'set' action.");
 
+            // When setting active=true, search inactive objects too
             var resolveResult = ResolveTargetWithAmbiguity(targetToken);
             if (resolveResult.Error != null)
                 return resolveResult.Error;
 
             var go = resolveResult.GameObject;
-            var changes = ApplySetProperties(go, @params, p);
+            var setResult = ApplySetProperties(go, @params, p);
+            if (setResult.Error != null)
+                return setResult.Error;
 
             EditorUtility.SetDirty(go);
             MarkOwningSceneDirty(go);
@@ -300,7 +331,7 @@ namespace MCPForUnity.Editor.Tools
             {
                 path = GetGameObjectPath(go),
                 instance_id = go.GetInstanceID(),
-                changes
+                changes = setResult.Changes
             });
         }
 
@@ -310,51 +341,17 @@ namespace MCPForUnity.Editor.Tools
             if (!scene.IsValid() || !scene.isLoaded)
                 return new ErrorResponse("No valid and loaded scene is active.");
 
-            var targets = new List<GameObject>();
+            var targets = CollectBatchTargets(targetRegex, batchTag, batchParent);
+            if (targets is ErrorResponse err)
+                return err;
 
-            if (!string.IsNullOrEmpty(targetRegex))
-            {
-                Regex regex;
-                try
-                {
-                    regex = new Regex(targetRegex, RegexOptions.IgnoreCase);
-                }
-                catch (ArgumentException e)
-                {
-                    return new ErrorResponse($"Invalid target_regex pattern: {e.Message}");
-                }
+            var targetList = (List<GameObject>)targets;
 
-                foreach (var go in GameObjectLookup.GetAllSceneObjects(true))
-                {
-                    if (regex.IsMatch(GetGameObjectPath(go)))
-                        targets.Add(go);
-                }
-            }
-            else if (!string.IsNullOrEmpty(batchTag))
-            {
-                foreach (var go in GameObjectLookup.GetAllSceneObjects(true))
-                {
-                    if (go.CompareTag(batchTag))
-                        targets.Add(go);
-                }
-            }
-            else if (!string.IsNullOrEmpty(batchParent))
-            {
-                var parentGo = ResolveTarget(batchParent, false);
-                if (parentGo == null)
-                    return new ErrorResponse($"Parent '{batchParent}' not found.");
-
-                foreach (Transform child in parentGo.transform)
-                {
-                    targets.Add(child.gameObject);
-                }
-            }
-
-            if (targets.Count == 0)
+            if (targetList.Count == 0)
                 return new SuccessResponse("No objects matched the criteria.", new { affected = new List<object>(), count = 0 });
 
             var affected = new List<object>();
-            foreach (var go in targets)
+            foreach (var go in targetList)
             {
                 ApplySetProperties(go, @params, p);
                 EditorUtility.SetDirty(go);
@@ -365,9 +362,15 @@ namespace MCPForUnity.Editor.Tools
             return new SuccessResponse($"Updated {affected.Count} objects.", new { affected, count = affected.Count });
         }
 
-        private static List<string> ApplySetProperties(GameObject go, JObject @params, ToolParams p)
+        private class SetResult
         {
-            var changes = new List<string>();
+            public List<string> Changes = new List<string>();
+            public object Error;
+        }
+
+        private static SetResult ApplySetProperties(GameObject go, JObject @params, ToolParams p)
+        {
+            var result = new SetResult();
 
             if (@params["name"] != null)
             {
@@ -376,7 +379,7 @@ namespace MCPForUnity.Editor.Tools
                 {
                     Undo.RecordObject(go, "Rename GameObject");
                     go.name = newName;
-                    changes.Add("name");
+                    result.Changes.Add("name");
                 }
             }
 
@@ -387,7 +390,7 @@ namespace MCPForUnity.Editor.Tools
                 {
                     Undo.RecordObject(go, "Set Active State");
                     go.SetActive(active);
-                    changes.Add("active");
+                    result.Changes.Add("active");
                 }
             }
 
@@ -396,145 +399,204 @@ namespace MCPForUnity.Editor.Tools
 
             if (@params["position"] != null)
             {
-                var pos = ParseVector3(@params["position"]);
-                if (pos.HasValue && transform.position != pos.Value)
+                var pos = VectorParsing.ParseVector3(@params["position"]);
+                if (pos.HasValue && transform.localPosition != pos.Value)
                 {
-                    if (!transformChanged) Undo.RecordObject(transform, "Set Position");
-                    transform.position = pos.Value;
+                    if (!transformChanged) Undo.RecordObject(transform, "Set Transform");
+                    transform.localPosition = pos.Value;
                     transformChanged = true;
-                    changes.Add("position");
+                    result.Changes.Add("position");
                 }
             }
 
             if (@params["rotation"] != null)
             {
-                var rot = ParseVector3(@params["rotation"]);
-                if (rot.HasValue)
+                var rot = VectorParsing.ParseVector3(@params["rotation"]);
+                if (rot.HasValue && transform.localEulerAngles != rot.Value)
                 {
-                    var euler = Quaternion.Euler(rot.Value);
-                    if (transform.rotation != euler)
-                    {
-                        if (!transformChanged) Undo.RecordObject(transform, "Set Rotation");
-                        transform.rotation = euler;
-                        transformChanged = true;
-                        changes.Add("rotation");
-                    }
+                    if (!transformChanged) Undo.RecordObject(transform, "Set Transform");
+                    transform.localEulerAngles = rot.Value;
+                    transformChanged = true;
+                    result.Changes.Add("rotation");
                 }
             }
 
             if (@params["scale"] != null)
             {
-                var scale = ParseVector3(@params["scale"]);
+                var scale = VectorParsing.ParseVector3(@params["scale"]);
                 if (scale.HasValue && transform.localScale != scale.Value)
                 {
-                    if (!transformChanged) Undo.RecordObject(transform, "Set Scale");
+                    if (!transformChanged) Undo.RecordObject(transform, "Set Transform");
                     transform.localScale = scale.Value;
                     transformChanged = true;
-                    changes.Add("scale");
+                    result.Changes.Add("scale");
                 }
             }
 
+            // Reparent with circular parenting guard
             string parentPath = p.Get("parent");
             if (!string.IsNullOrEmpty(parentPath))
             {
-                var newParent = ResolveTarget(parentPath, false);
-                if (newParent != null && transform.parent != newParent.transform)
+                var newParent = ResolveTarget(parentPath);
+                if (newParent != null)
                 {
-                    Undo.RecordObject(transform, "Reparent GameObject");
-                    transform.SetParent(newParent.transform, true);
-                    changes.Add("parent");
+                    if (newParent.transform.IsChildOf(go.transform))
+                    {
+                        result.Error = new ErrorResponse(
+                            $"Cannot parent '{go.name}' to '{newParent.name}', as it would create a hierarchy loop.");
+                        return result;
+                    }
+                    if (transform.parent != newParent.transform)
+                    {
+                        Undo.RecordObject(transform, "Reparent GameObject");
+                        transform.SetParent(newParent.transform, true);
+                        result.Changes.Add("parent");
+                    }
                 }
             }
 
+            // Tag with auto-creation
             string tag = p.Get("tag");
             if (!string.IsNullOrEmpty(tag) && go.tag != tag)
             {
+                string tagToSet = tag;
+                if (tagToSet != "Untagged" && !InternalEditorUtility.tags.Contains(tagToSet))
+                {
+                    try
+                    {
+                        InternalEditorUtility.AddTag(tagToSet);
+                    }
+                    catch (Exception ex)
+                    {
+                        result.Error = new ErrorResponse($"Failed to create tag '{tagToSet}': {ex.Message}");
+                        return result;
+                    }
+                }
+
                 try
                 {
-                    go.tag = tag;
-                    changes.Add("tag");
+                    go.tag = tagToSet;
+                    result.Changes.Add("tag");
                 }
-                catch (UnityException e)
+                catch (Exception ex)
                 {
-                    McpLog.Warn($"[SceneObject] Failed to set tag: {e.Message}");
+                    result.Error = new ErrorResponse($"Failed to set tag '{tagToSet}': {ex.Message}");
+                    return result;
                 }
             }
 
             var layerToken = @params["layer"];
             if (layerToken != null)
             {
-                int layer;
+                int layerId;
                 if (layerToken.Type == JTokenType.Integer)
                 {
-                    layer = layerToken.Value<int>();
+                    layerId = layerToken.Value<int>();
                 }
                 else
                 {
-                    string layerName = layerToken.ToString();
-                    layer = LayerMask.NameToLayer(layerName);
+                    layerId = LayerMask.NameToLayer(layerToken.ToString());
+                    if (layerId == -1)
+                    {
+                        result.Error = new ErrorResponse($"Invalid layer: '{layerToken}'. Use a valid layer name.");
+                        return result;
+                    }
                 }
 
-                if (layer >= 0 && layer <= 31 && go.layer != layer)
+                if (layerId >= 0 && layerId <= 31 && go.layer != layerId)
                 {
-                    go.layer = layer;
-                    changes.Add("layer");
+                    go.layer = layerId;
+                    result.Changes.Add("layer");
                 }
             }
 
+            // Add components
+            var addComponentsToken = p.GetRaw("add_components");
+            if (addComponentsToken is JArray addArray)
+            {
+                foreach (var compToken in addArray)
+                {
+                    string typeName = null;
+                    JObject compProps = null;
+
+                    if (compToken.Type == JTokenType.String)
+                    {
+                        typeName = compToken.ToString();
+                    }
+                    else if (compToken is JObject compObj)
+                    {
+                        typeName = compObj["typeName"]?.ToString() ?? compObj["type"]?.ToString();
+                        compProps = compObj["properties"] as JObject;
+                    }
+
+                    if (!string.IsNullOrEmpty(typeName))
+                    {
+                        var addResult = GameObjectComponentHelpers.AddComponentInternal(go, typeName, compProps);
+                        if (addResult != null)
+                        {
+                            result.Error = addResult;
+                            return result;
+                        }
+                        result.Changes.Add($"add_component:{typeName}");
+                    }
+                }
+            }
+
+            // Remove components
+            var removeComponentsToken = p.GetRaw("remove_components");
+            if (removeComponentsToken is JArray removeArray)
+            {
+                foreach (var compToken in removeArray)
+                {
+                    string typeName = compToken.ToString();
+                    if (!string.IsNullOrEmpty(typeName))
+                    {
+                        var removeResult = GameObjectComponentHelpers.RemoveComponentInternal(go, typeName);
+                        if (removeResult != null)
+                        {
+                            result.Error = removeResult;
+                            return result;
+                        }
+                        result.Changes.Add($"remove_component:{typeName}");
+                    }
+                }
+            }
+
+            // Set properties on a single component
             string componentName = p.Get("component");
             JObject properties = p.GetRaw("properties") as JObject;
 
             if (!string.IsNullOrEmpty(componentName) && properties != null)
             {
-                var componentType = UnityTypeResolver.ResolveComponent(componentName);
-                if (componentType != null)
+                var setResult = GameObjectComponentHelpers.SetComponentPropertiesInternal(go, componentName, properties);
+                if (setResult != null)
                 {
-                    var comp = go.GetComponent(componentType);
-                    if (comp != null)
+                    result.Error = setResult;
+                    return result;
+                }
+                result.Changes.Add($"component:{componentName}");
+            }
+
+            // Set properties on multiple components via component_properties dict
+            var componentPropertiesToken = p.GetRaw("component_properties");
+            if (componentPropertiesToken is JObject componentPropsObj)
+            {
+                foreach (var prop in componentPropsObj.Properties())
+                {
+                    if (prop.Value is JObject propValues)
                     {
-                        Undo.RecordObject(comp, "Set Component Properties");
-                        foreach (var prop in properties.Properties())
+                        var setResult = GameObjectComponentHelpers.SetComponentPropertiesInternal(go, prop.Name, propValues);
+                        if (setResult != null)
                         {
-                            ComponentOps.SetProperty(comp, prop.Name, prop.Value, out _);
+                            result.Error = setResult;
+                            return result;
                         }
-                        changes.Add($"component:{componentName}");
+                        result.Changes.Add($"component:{prop.Name}");
                     }
                 }
             }
 
-            return changes;
-        }
-
-        private static Vector3? ParseVector3(JToken token)
-        {
-            if (token == null) return null;
-
-            if (token.Type == JTokenType.Array)
-            {
-                var arr = token as JArray;
-                if (arr != null && arr.Count >= 3)
-                {
-                    return new Vector3(
-                        arr[0].Value<float>(),
-                        arr[1].Value<float>(),
-                        arr[2].Value<float>()
-                    );
-                }
-            }
-            else if (token.Type == JTokenType.Object)
-            {
-                var obj = token as JObject;
-                if (obj != null)
-                {
-                    return new Vector3(
-                        obj["x"]?.Value<float>() ?? 0,
-                        obj["y"]?.Value<float>() ?? 0,
-                        obj["z"]?.Value<float>() ?? 0
-                    );
-                }
-            }
-
-            return null;
+            return result;
         }
 
         #endregion
@@ -570,7 +632,7 @@ namespace MCPForUnity.Editor.Tools
 
             if (!string.IsNullOrEmpty(parentPath))
             {
-                var parent = ResolveTarget(parentPath, false);
+                var parent = ResolveTarget(parentPath);
                 if (parent != null)
                 {
                     newGo.transform.SetParent(parent.transform, false);
@@ -579,47 +641,65 @@ namespace MCPForUnity.Editor.Tools
 
             var transform = newGo.transform;
 
-            var position = ParseVector3(@params["position"]);
+            var position = VectorParsing.ParseVector3(@params["position"]);
             if (position.HasValue)
-                transform.position = position.Value;
+                transform.localPosition = position.Value;
 
-            var rotation = ParseVector3(@params["rotation"]);
+            var rotation = VectorParsing.ParseVector3(@params["rotation"]);
             if (rotation.HasValue)
-                transform.rotation = Quaternion.Euler(rotation.Value);
+                transform.localEulerAngles = rotation.Value;
 
-            var scale = ParseVector3(@params["scale"]);
+            var scale = VectorParsing.ParseVector3(@params["scale"]);
             if (scale.HasValue)
                 transform.localScale = scale.Value;
 
             if (@params["active"] != null)
                 newGo.SetActive(p.GetBool("active", true));
 
+            // Tag with auto-creation
             string tag = p.Get("tag");
             if (!string.IsNullOrEmpty(tag))
             {
+                if (tag != "Untagged" && !InternalEditorUtility.tags.Contains(tag))
+                {
+                    try { InternalEditorUtility.AddTag(tag); }
+                    catch { }
+                }
                 try { newGo.tag = tag; } catch { }
             }
 
             var layerToken = @params["layer"];
             if (layerToken != null)
             {
-                int layer = layerToken.Type == JTokenType.Integer
+                int layerId = layerToken.Type == JTokenType.Integer
                     ? layerToken.Value<int>()
                     : LayerMask.NameToLayer(layerToken.ToString());
-                if (layer >= 0 && layer <= 31)
-                    newGo.layer = layer;
+                if (layerId >= 0 && layerId <= 31)
+                    newGo.layer = layerId;
             }
 
+            // Components: accept strings or {typeName, properties} objects
             var componentsToken = p.GetRaw("components");
             if (componentsToken is JArray componentsArray)
             {
                 foreach (var compToken in componentsArray)
                 {
-                    string compName = compToken.ToString();
-                    var compType = UnityTypeResolver.ResolveComponent(compName);
-                    if (compType != null)
+                    string typeName = null;
+                    JObject compProps = null;
+
+                    if (compToken.Type == JTokenType.String)
                     {
-                        ComponentOps.AddComponent(newGo, compType, out _);
+                        typeName = compToken.ToString();
+                    }
+                    else if (compToken is JObject compObj)
+                    {
+                        typeName = compObj["typeName"]?.ToString() ?? compObj["type"]?.ToString();
+                        compProps = compObj["properties"] as JObject;
+                    }
+
+                    if (!string.IsNullOrEmpty(typeName))
+                    {
+                        GameObjectComponentHelpers.AddComponentInternal(newGo, typeName, compProps);
                     }
                 }
             }
@@ -693,45 +773,11 @@ namespace MCPForUnity.Editor.Tools
             if (!scene.IsValid() || !scene.isLoaded)
                 return new ErrorResponse("No valid and loaded scene is active.");
 
-            var targets = new List<GameObject>();
+            var targetsObj = CollectBatchTargets(targetRegex, batchTag, batchParent);
+            if (targetsObj is ErrorResponse err)
+                return err;
 
-            if (!string.IsNullOrEmpty(targetRegex))
-            {
-                Regex regex;
-                try
-                {
-                    regex = new Regex(targetRegex, RegexOptions.IgnoreCase);
-                }
-                catch (ArgumentException e)
-                {
-                    return new ErrorResponse($"Invalid target_regex pattern: {e.Message}");
-                }
-
-                foreach (var go in GameObjectLookup.GetAllSceneObjects(true))
-                {
-                    if (regex.IsMatch(GetGameObjectPath(go)))
-                        targets.Add(go);
-                }
-            }
-            else if (!string.IsNullOrEmpty(batchTag))
-            {
-                foreach (var go in GameObjectLookup.GetAllSceneObjects(true))
-                {
-                    if (go.CompareTag(batchTag))
-                        targets.Add(go);
-                }
-            }
-            else if (!string.IsNullOrEmpty(batchParent))
-            {
-                var parentGo = ResolveTarget(batchParent, false);
-                if (parentGo == null)
-                    return new ErrorResponse($"Parent '{batchParent}' not found.");
-
-                foreach (Transform child in parentGo.transform)
-                {
-                    targets.Add(child.gameObject);
-                }
-            }
+            var targets = (List<GameObject>)targetsObj;
 
             if (targets.Count == 0)
                 return new SuccessResponse("No objects matched the criteria.", new { deleted = new List<object>(), count = 0 });
@@ -744,6 +790,158 @@ namespace MCPForUnity.Editor.Tools
             }
 
             return new SuccessResponse($"Deleted {deleted.Count} objects.", new { deleted, count = deleted.Count });
+        }
+
+        #endregion
+
+        #region Duplicate Action
+
+        private static object HandleDuplicate(JObject @params, ToolParams p)
+        {
+            var targetToken = p.GetRaw("target");
+            if (targetToken == null)
+                return new ErrorResponse("'target' parameter is required for 'duplicate' action.");
+
+            var resolveResult = ResolveTargetWithAmbiguity(targetToken);
+            if (resolveResult.Error != null)
+                return resolveResult.Error;
+
+            var sourceGo = resolveResult.GameObject;
+            string newName = p.Get("name");
+            Vector3? position = VectorParsing.ParseVector3(@params["position"]);
+            Vector3? offset = VectorParsing.ParseVector3(@params["offset"]);
+            string parentPath = p.Get("parent");
+
+            GameObject duplicatedGo = UnityEngine.Object.Instantiate(sourceGo);
+            Undo.RegisterCreatedObjectUndo(duplicatedGo, $"Duplicate {sourceGo.name}");
+
+            duplicatedGo.name = !string.IsNullOrEmpty(newName)
+                ? newName
+                : sourceGo.name.Replace("(Clone)", "").Trim() + "_Copy";
+
+            if (position.HasValue)
+            {
+                duplicatedGo.transform.position = position.Value;
+            }
+            else if (offset.HasValue)
+            {
+                duplicatedGo.transform.position = sourceGo.transform.position + offset.Value;
+            }
+
+            if (!string.IsNullOrEmpty(parentPath))
+            {
+                var newParent = ResolveTarget(parentPath);
+                if (newParent != null)
+                    duplicatedGo.transform.SetParent(newParent.transform, true);
+            }
+            else
+            {
+                duplicatedGo.transform.SetParent(sourceGo.transform.parent, true);
+            }
+
+            EditorUtility.SetDirty(duplicatedGo);
+            MarkOwningSceneDirty(duplicatedGo);
+
+            return new SuccessResponse($"Duplicated '{sourceGo.name}' as '{duplicatedGo.name}'.", new
+            {
+                source = new { path = GetGameObjectPath(sourceGo), instance_id = sourceGo.GetInstanceID() },
+                duplicate = new
+                {
+                    path = GetGameObjectPath(duplicatedGo),
+                    name = duplicatedGo.name,
+                    instance_id = duplicatedGo.GetInstanceID()
+                }
+            });
+        }
+
+        #endregion
+
+        #region Move Relative Action
+
+        private static object HandleMoveRelative(JObject @params, ToolParams p)
+        {
+            var targetToken = p.GetRaw("target");
+            if (targetToken == null)
+                return new ErrorResponse("'target' parameter is required for 'move_relative' action.");
+
+            var resolveResult = ResolveTargetWithAmbiguity(targetToken);
+            if (resolveResult.Error != null)
+                return resolveResult.Error;
+
+            var targetGo = resolveResult.GameObject;
+
+            string refStr = p.Get("reference");
+            if (string.IsNullOrEmpty(refStr))
+                return new ErrorResponse("'reference' parameter is required for 'move_relative' action.");
+
+            var refGo = ResolveTarget(refStr);
+            if (refGo == null)
+                return new ErrorResponse($"Reference object '{refStr}' not found.");
+
+            string direction = p.Get("direction");
+            float distance = p.GetFloat("distance") ?? 1f;
+            Vector3? customOffset = VectorParsing.ParseVector3(@params["offset"]);
+            bool useWorldSpace = p.GetBool("world_space", true);
+
+            Undo.RecordObject(targetGo.transform, $"Move {targetGo.name} relative to {refGo.name}");
+
+            Vector3 newPosition;
+
+            if (customOffset.HasValue)
+            {
+                newPosition = useWorldSpace
+                    ? refGo.transform.position + customOffset.Value
+                    : refGo.transform.TransformPoint(customOffset.Value);
+            }
+            else if (!string.IsNullOrEmpty(direction))
+            {
+                Vector3 dirVector = GetDirectionVector(direction.ToLowerInvariant(), refGo.transform, useWorldSpace);
+                newPosition = refGo.transform.position + dirVector * distance;
+            }
+            else
+            {
+                return new ErrorResponse("Either 'direction' or 'offset' parameter is required for 'move_relative' action.");
+            }
+
+            targetGo.transform.position = newPosition;
+
+            EditorUtility.SetDirty(targetGo);
+            MarkOwningSceneDirty(targetGo);
+
+            return new SuccessResponse($"Moved '{targetGo.name}' relative to '{refGo.name}'.", new
+            {
+                path = GetGameObjectPath(targetGo),
+                instance_id = targetGo.GetInstanceID(),
+                new_position = new { x = targetGo.transform.position.x, y = targetGo.transform.position.y, z = targetGo.transform.position.z }
+            });
+        }
+
+        private static Vector3 GetDirectionVector(string direction, Transform referenceTransform, bool useWorldSpace)
+        {
+            if (useWorldSpace)
+            {
+                return direction switch
+                {
+                    "right" => Vector3.right,
+                    "left" => Vector3.left,
+                    "up" => Vector3.up,
+                    "down" => Vector3.down,
+                    "forward" or "front" => Vector3.forward,
+                    "back" or "backward" or "behind" => Vector3.back,
+                    _ => Vector3.forward
+                };
+            }
+
+            return direction switch
+            {
+                "right" => referenceTransform.right,
+                "left" => -referenceTransform.right,
+                "up" => referenceTransform.up,
+                "down" => -referenceTransform.up,
+                "forward" or "front" => referenceTransform.forward,
+                "back" or "backward" or "behind" => -referenceTransform.forward,
+                _ => referenceTransform.forward
+            };
         }
 
         #endregion
@@ -813,7 +1011,7 @@ namespace MCPForUnity.Editor.Tools
             return result;
         }
 
-        private static GameObject ResolveTarget(string target, bool allowAmbiguity)
+        private static GameObject ResolveTarget(string target)
         {
             if (int.TryParse(target, out int id))
                 return GameObjectLookup.FindById(id);
@@ -826,17 +1024,6 @@ namespace MCPForUnity.Editor.Tools
 
         private static GameObject FindByPath(string path)
         {
-            var prefabStage = PrefabStageUtility.GetCurrentPrefabStage();
-            if (prefabStage != null)
-            {
-                foreach (var go in GameObjectLookup.GetAllSceneObjects(true))
-                {
-                    if (GetGameObjectPath(go) == path)
-                        return go;
-                }
-                return null;
-            }
-
             foreach (var go in GameObjectLookup.GetAllSceneObjects(true))
             {
                 if (GetGameObjectPath(go) == path)
@@ -847,7 +1034,56 @@ namespace MCPForUnity.Editor.Tools
 
         #endregion
 
-        #region Helpers
+        #region Shared Helpers
+
+        private static object CollectBatchTargets(string targetRegex, string batchTag, string batchParent)
+        {
+            var targets = new List<GameObject>();
+
+            if (!string.IsNullOrEmpty(targetRegex))
+            {
+                Regex regex;
+                try
+                {
+                    regex = new Regex(targetRegex, RegexOptions.IgnoreCase);
+                }
+                catch (ArgumentException e)
+                {
+                    return new ErrorResponse($"Invalid target_regex pattern: {e.Message}");
+                }
+
+                foreach (var go in GameObjectLookup.GetAllSceneObjects(true))
+                {
+                    if (regex.IsMatch(GetGameObjectPath(go)))
+                        targets.Add(go);
+                }
+            }
+            else if (!string.IsNullOrEmpty(batchTag))
+            {
+                foreach (var go in GameObjectLookup.GetAllSceneObjects(true))
+                {
+                    try
+                    {
+                        if (go.CompareTag(batchTag))
+                            targets.Add(go);
+                    }
+                    catch { }
+                }
+            }
+            else if (!string.IsNullOrEmpty(batchParent))
+            {
+                var parentGo = ResolveTarget(batchParent);
+                if (parentGo == null)
+                    return new ErrorResponse($"Parent '{batchParent}' not found.");
+
+                foreach (Transform child in parentGo.transform)
+                {
+                    targets.Add(child.gameObject);
+                }
+            }
+
+            return targets;
+        }
 
         private static Scene GetActiveScene()
         {

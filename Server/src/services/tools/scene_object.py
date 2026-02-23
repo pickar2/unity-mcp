@@ -4,9 +4,11 @@ Unified scene object interaction tool.
 Provides a single tool for interacting with GameObjects in the Unity scene:
 - list: Discover objects with filtering and pagination
 - get: Read object state and component data
-- set: Modify object properties (single or batch)
+- set: Modify object properties (single or batch), add/remove components
 - create: Create new GameObjects
 - delete: Delete objects (single or batch)
+- duplicate: Clone existing objects
+- move_relative: Move objects relative to a reference object
 
 Uses path-based addressing (/Canvas/Panel/Button) for intuitive object targeting.
 """
@@ -16,7 +18,6 @@ from typing import Annotated, Any, Literal
 from fastmcp import Context
 from mcp.types import ToolAnnotations
 
-from models import MCPResponse
 from services.registry import mcp_for_unity_tool
 from services.tools import get_unity_instance_from_context
 from services.tools.utils import coerce_int, coerce_bool
@@ -28,15 +29,17 @@ from transport.legacy.unity_connection import async_send_command_with_retry
     description="""Interact with GameObjects in the Unity scene. Works in both edit mode and play mode.
 
 Actions:
-- list: Discover objects with filtering. Returns paginated flat list with paths.
-- get: Read object state. Target can be name, path, or instance_id.
-- set: Modify object properties. Supports batch operations via target_regex/tag/parent.
-- create: Create new GameObject. Optionally with primitive type and components.
+- list: Discover objects with filtering (tag, layer, component, regex, parent). Returns paginated flat list with paths.
+- get: Read object state and optionally full component data. Target can be name, path, or instance_id.
+- set: Modify object properties. Supports batch via target_regex/tag/parent. Can add/remove components.
+- create: Create new GameObject with optional primitive type, components, transform.
 - delete: Delete objects. Supports batch operations.
+- duplicate: Clone a GameObject with optional new name, position offset, parent.
+- move_relative: Move object relative to a reference object by direction or offset.
 
 Target Resolution:
 - instance_id (int): Direct reference, always unique
-- path (string with /): Full path like "/Canvas/Panel/Button", always unique
+- path (string with /): Full path like "Canvas/Panel/Button", always unique
 - name (string): Object name. Must be unique, otherwise error with list of matches
 
 Batch Operations (for set/delete):
@@ -44,13 +47,21 @@ Batch Operations (for set/delete):
 - tag: All objects with this tag
 - parent: All direct children of this parent path
 
+Position/rotation use LOCAL coordinates (relative to parent).
+
 Examples:
   scene_object(action="list", tag="Enemy")
+  scene_object(action="list", layer="Water", depth=0)
   scene_object(action="get", target="/Player", components=true)
   scene_object(action="set", target="Player", active=false, position=[10, 0, 5])
+  scene_object(action="set", target="Player", add_components=["Rigidbody", "BoxCollider"])
+  scene_object(action="set", target="Player", remove_components=["BoxCollider"])
+  scene_object(action="set", target="Player", component="Rigidbody", properties={"mass": 10})
   scene_object(action="set", target_regex=".*Enemy", active=false)
   scene_object(action="create", name="Cube", primitive="Cube", position=[0, 1, 0])
-  scene_object(action="delete", target="/Temp/Object")""",
+  scene_object(action="delete", target="/Temp/Object")
+  scene_object(action="duplicate", target="Player", name="Player2", offset=[5, 0, 0])
+  scene_object(action="move_relative", target="Chair", reference="Table", direction="right", distance=2)""",
     annotations=ToolAnnotations(
         title="Scene Object",
     ),
@@ -58,48 +69,81 @@ Examples:
 async def scene_object(
     ctx: Context,
     action: Annotated[
-        Literal["list", "get", "set", "create", "delete"],
+        Literal["list", "get", "set", "create", "delete", "duplicate", "move_relative"],
         "Action to perform. Default: get",
     ] = "get",
     target: Annotated[
-        str | int | None,
-        "Object reference: name, path, or instance_id. Required for get/set/delete (single).",
+        str | int | None, "Object reference: name, path, or instance_id."
     ] = None,
     target_regex: Annotated[
         str | None, "Regex pattern on full path for batch operations."
     ] = None,
     tag: Annotated[
-        str | None, "Filter by tag (list) or apply to all with tag (batch set/delete)."
+        str | None,
+        "Filter by tag (list) or apply to all with tag (batch set/delete). Auto-creates missing tags.",
     ] = None,
     parent: Annotated[
-        str | None, "Parent path for create, or filter for list/batch operations."
+        str | None,
+        "Parent path for create/reparent, or filter for list/batch operations.",
     ] = None,
     component: Annotated[
         str | None,
-        "Filter to objects having this component (list) or component type to modify (set).",
+        "Filter to objects having this component (list) or component type to modify properties on (set).",
     ] = None,
     components: Annotated[
         bool | list[str] | None,
-        "Include component data in response (get), or list of component types to add (create).",
+        "Include component data in response (get: bool), or list of component types to add (create).",
+    ] = None,
+    add_components: Annotated[
+        list[str] | None,
+        "List of component types to add to existing object (set action).",
+    ] = None,
+    remove_components: Annotated[
+        list[str] | None, "List of component types to remove from object (set action)."
+    ] = None,
+    component_properties: Annotated[
+        dict | None,
+        "Set properties on multiple components: {'Rigidbody': {'mass': 10}, 'Collider': {'isTrigger': true}}",
     ] = None,
     properties: Annotated[
-        dict | None, "Properties to set on object or component."
+        dict | None,
+        "Properties to set on a single component (use with 'component' param).",
     ] = None,
     name: Annotated[
-        str | None, "New name for set/rename, or object name for create."
+        str | None, "New name for set/rename/duplicate, or object name for create."
     ] = None,
     active: Annotated[bool | None, "Set active state."] = None,
     position: Annotated[
-        list[float] | dict | None, "World position [x,y,z] or {x,y,z}."
+        list[float] | dict | None, "Local position [x,y,z] or {x,y,z}."
     ] = None,
     rotation: Annotated[
-        list[float] | dict | None, "Euler rotation [x,y,z] or {x,y,z}."
+        list[float] | dict | None, "Local euler rotation [x,y,z] or {x,y,z}."
     ] = None,
-    scale: Annotated[list[float] | dict | None, "Scale [x,y,z] or {x,y,z}."] = None,
-    layer: Annotated[int | str | None, "Layer number or name."] = None,
+    scale: Annotated[
+        list[float] | dict | None, "Local scale [x,y,z] or {x,y,z}."
+    ] = None,
+    layer: Annotated[
+        int | str | None,
+        "Layer number or name. For list: filter. For set/create: assign.",
+    ] = None,
     primitive: Annotated[
         str | None,
         "Primitive type for create: Cube, Sphere, Capsule, Cylinder, Plane, Quad.",
+    ] = None,
+    offset: Annotated[
+        list[float] | dict | None, "Position offset for duplicate or move_relative."
+    ] = None,
+    reference: Annotated[
+        str | None, "Reference object for move_relative action."
+    ] = None,
+    direction: Annotated[
+        str | None, "Direction for move_relative: right, left, up, down, forward, back."
+    ] = None,
+    distance: Annotated[
+        float | None, "Distance for move_relative. Default: 1.0."
+    ] = None,
+    world_space: Annotated[
+        bool | None, "Use world space for move_relative. Default: true."
     ] = None,
     depth: Annotated[
         int | None,
@@ -143,6 +187,16 @@ async def scene_object(
         params["primitive"] = primitive
     if properties is not None:
         params["properties"] = properties
+    if offset is not None:
+        params["offset"] = offset
+    if reference is not None:
+        params["reference"] = reference
+    if direction is not None:
+        params["direction"] = direction
+    if distance is not None:
+        params["distance"] = distance
+    if world_space is not None:
+        params["world_space"] = world_space
     if depth is not None:
         params["depth"] = depth
     if include_inactive is not None:
@@ -151,6 +205,12 @@ async def scene_object(
         params["page_size"] = coerce_int(page_size)
     if cursor is not None:
         params["cursor"] = coerce_int(cursor)
+    if add_components is not None:
+        params["add_components"] = add_components
+    if remove_components is not None:
+        params["remove_components"] = remove_components
+    if component_properties is not None:
+        params["component_properties"] = component_properties
 
     if components is not None:
         if action == "get":

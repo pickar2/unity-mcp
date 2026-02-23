@@ -386,3 +386,516 @@ async def test_scene_object_set_component_properties(monkeypatch):
     assert resp["success"] is True
     assert captured["params"]["component"] == "Rigidbody"
     assert captured["params"]["properties"] == {"mass": 10, "useGravity": False}
+
+
+@pytest.mark.asyncio
+async def test_scene_object_duplicate_basic(monkeypatch):
+    """Test duplicate action with default settings."""
+    tools = setup_scene_object_tools()
+    scene_object = tools["scene_object"]
+
+    captured = {}
+
+    async def fake_send(_send_fn, _unity_instance, _command_type, params, **_kwargs):
+        captured["params"] = params
+        return {
+            "success": True,
+            "message": "Duplicated 'Player' as 'Player_Copy'.",
+            "data": {
+                "source": {"path": "/Player", "instance_id": 100},
+                "duplicate": {
+                    "path": "/Player_Copy",
+                    "name": "Player_Copy",
+                    "instance_id": 200,
+                },
+            },
+        }
+
+    import services.tools.scene_object as scene_object_mod
+
+    monkeypatch.setattr(scene_object_mod, "send_with_unity_instance", fake_send)
+
+    resp = await scene_object(ctx=DummyContext(), action="duplicate", target="Player")
+    assert resp["success"] is True
+    assert captured["params"]["action"] == "duplicate"
+    assert captured["params"]["target"] == "Player"
+
+
+@pytest.mark.asyncio
+async def test_scene_object_duplicate_with_name_and_offset(monkeypatch):
+    """Test duplicate action with custom name and offset."""
+    tools = setup_scene_object_tools()
+    scene_object = tools["scene_object"]
+
+    captured = {}
+
+    async def fake_send(_send_fn, _unity_instance, _command_type, params, **_kwargs):
+        captured["params"] = params
+        return {
+            "success": True,
+            "data": {
+                "source": {"path": "/Player", "instance_id": 100},
+                "duplicate": {
+                    "path": "/Player2",
+                    "name": "Player2",
+                    "instance_id": 201,
+                },
+            },
+        }
+
+    import services.tools.scene_object as scene_object_mod
+
+    monkeypatch.setattr(scene_object_mod, "send_with_unity_instance", fake_send)
+
+    resp = await scene_object(
+        ctx=DummyContext(),
+        action="duplicate",
+        target="/Player",
+        name="Player2",
+        offset=[5, 0, 0],
+        parent="/Team",
+    )
+    assert resp["success"] is True
+    assert captured["params"]["name"] == "Player2"
+    assert captured["params"]["offset"] == [5, 0, 0]
+    assert captured["params"]["parent"] == "/Team"
+
+
+@pytest.mark.asyncio
+async def test_scene_object_duplicate_with_position(monkeypatch):
+    """Test duplicate action with absolute position."""
+    tools = setup_scene_object_tools()
+    scene_object = tools["scene_object"]
+
+    captured = {}
+
+    async def fake_send(_send_fn, _unity_instance, _command_type, params, **_kwargs):
+        captured["params"] = params
+        return {
+            "success": True,
+            "data": {
+                "source": {"path": "/Player", "instance_id": 100},
+                "duplicate": {
+                    "path": "/Player_Copy",
+                    "name": "Player_Copy",
+                    "instance_id": 202,
+                },
+            },
+        }
+
+    import services.tools.scene_object as scene_object_mod
+
+    monkeypatch.setattr(scene_object_mod, "send_with_unity_instance", fake_send)
+
+    resp = await scene_object(
+        ctx=DummyContext(),
+        action="duplicate",
+        target="Player",
+        position=[10, 0, 5],
+    )
+    assert resp["success"] is True
+    assert captured["params"]["position"] == [10, 0, 5]
+
+
+@pytest.mark.asyncio
+async def test_scene_object_move_relative_direction(monkeypatch):
+    """Test move_relative action with direction."""
+    tools = setup_scene_object_tools()
+    scene_object = tools["scene_object"]
+
+    captured = {}
+
+    async def fake_send(_send_fn, _unity_instance, _command_type, params, **_kwargs):
+        captured["params"] = params
+        return {
+            "success": True,
+            "message": "Moved 'Chair' relative to 'Table'.",
+            "data": {
+                "path": "/Chair",
+                "instance_id": 300,
+                "new_position": {"x": 2, "y": 0, "z": 0},
+            },
+        }
+
+    import services.tools.scene_object as scene_object_mod
+
+    monkeypatch.setattr(scene_object_mod, "send_with_unity_instance", fake_send)
+
+    resp = await scene_object(
+        ctx=DummyContext(),
+        action="move_relative",
+        target="Chair",
+        reference="Table",
+        direction="right",
+        distance=2.0,
+    )
+    assert resp["success"] is True
+    assert captured["params"]["action"] == "move_relative"
+    assert captured["params"]["target"] == "Chair"
+    assert captured["params"]["reference"] == "Table"
+    assert captured["params"]["direction"] == "right"
+    assert captured["params"]["distance"] == 2.0
+
+
+@pytest.mark.asyncio
+async def test_scene_object_move_relative_offset(monkeypatch):
+    """Test move_relative action with custom offset."""
+    tools = setup_scene_object_tools()
+    scene_object = tools["scene_object"]
+
+    captured = {}
+
+    async def fake_send(_send_fn, _unity_instance, _command_type, params, **_kwargs):
+        captured["params"] = params
+        return {
+            "success": True,
+            "data": {
+                "path": "/Lamp",
+                "instance_id": 301,
+                "new_position": {"x": 1, "y": 0.5, "z": 0},
+            },
+        }
+
+    import services.tools.scene_object as scene_object_mod
+
+    monkeypatch.setattr(scene_object_mod, "send_with_unity_instance", fake_send)
+
+    resp = await scene_object(
+        ctx=DummyContext(),
+        action="move_relative",
+        target="Lamp",
+        reference="Desk",
+        offset=[1, 0.5, 0],
+    )
+    assert resp["success"] is True
+    assert captured["params"]["offset"] == [1, 0.5, 0]
+    assert captured["params"]["reference"] == "Desk"
+
+
+@pytest.mark.asyncio
+async def test_scene_object_move_relative_local_space(monkeypatch):
+    """Test move_relative action with local space flag."""
+    tools = setup_scene_object_tools()
+    scene_object = tools["scene_object"]
+
+    captured = {}
+
+    async def fake_send(_send_fn, _unity_instance, _command_type, params, **_kwargs):
+        captured["params"] = params
+        return {"success": True, "data": {"path": "/NPC", "instance_id": 302}}
+
+    import services.tools.scene_object as scene_object_mod
+
+    monkeypatch.setattr(scene_object_mod, "send_with_unity_instance", fake_send)
+
+    resp = await scene_object(
+        ctx=DummyContext(),
+        action="move_relative",
+        target="NPC",
+        reference="Player",
+        direction="forward",
+        distance=5.0,
+        world_space=False,
+    )
+    assert resp["success"] is True
+    assert captured["params"]["world_space"] is False
+    assert captured["params"]["direction"] == "forward"
+    assert captured["params"]["distance"] == 5.0
+
+
+@pytest.mark.asyncio
+async def test_scene_object_set_add_components(monkeypatch):
+    """Test set action with add_components."""
+    tools = setup_scene_object_tools()
+    scene_object = tools["scene_object"]
+
+    captured = {}
+
+    async def fake_send(_send_fn, _unity_instance, _command_type, params, **_kwargs):
+        captured["params"] = params
+        return {
+            "success": True,
+            "data": {
+                "path": "/Player",
+                "changes": ["add_component:Rigidbody", "add_component:BoxCollider"],
+            },
+        }
+
+    import services.tools.scene_object as scene_object_mod
+
+    monkeypatch.setattr(scene_object_mod, "send_with_unity_instance", fake_send)
+
+    resp = await scene_object(
+        ctx=DummyContext(),
+        action="set",
+        target="Player",
+        add_components=["Rigidbody", "BoxCollider"],
+    )
+    assert resp["success"] is True
+    assert captured["params"]["add_components"] == ["Rigidbody", "BoxCollider"]
+
+
+@pytest.mark.asyncio
+async def test_scene_object_set_remove_components(monkeypatch):
+    """Test set action with remove_components."""
+    tools = setup_scene_object_tools()
+    scene_object = tools["scene_object"]
+
+    captured = {}
+
+    async def fake_send(_send_fn, _unity_instance, _command_type, params, **_kwargs):
+        captured["params"] = params
+        return {
+            "success": True,
+            "data": {"path": "/Player", "changes": ["remove_component:BoxCollider"]},
+        }
+
+    import services.tools.scene_object as scene_object_mod
+
+    monkeypatch.setattr(scene_object_mod, "send_with_unity_instance", fake_send)
+
+    resp = await scene_object(
+        ctx=DummyContext(),
+        action="set",
+        target="Player",
+        remove_components=["BoxCollider"],
+    )
+    assert resp["success"] is True
+    assert captured["params"]["remove_components"] == ["BoxCollider"]
+
+
+@pytest.mark.asyncio
+async def test_scene_object_set_component_properties_dict(monkeypatch):
+    """Test set action with component_properties dict for multiple components."""
+    tools = setup_scene_object_tools()
+    scene_object = tools["scene_object"]
+
+    captured = {}
+
+    async def fake_send(_send_fn, _unity_instance, _command_type, params, **_kwargs):
+        captured["params"] = params
+        return {
+            "success": True,
+            "data": {
+                "path": "/Player",
+                "changes": ["component:Rigidbody", "component:Collider"],
+            },
+        }
+
+    import services.tools.scene_object as scene_object_mod
+
+    monkeypatch.setattr(scene_object_mod, "send_with_unity_instance", fake_send)
+
+    comp_props = {
+        "Rigidbody": {"mass": 10, "useGravity": True},
+        "Collider": {"isTrigger": True},
+    }
+
+    resp = await scene_object(
+        ctx=DummyContext(),
+        action="set",
+        target="Player",
+        component_properties=comp_props,
+    )
+    assert resp["success"] is True
+    assert captured["params"]["component_properties"] == comp_props
+
+
+@pytest.mark.asyncio
+async def test_scene_object_list_layer_filter(monkeypatch):
+    """Test list action with layer filter."""
+    tools = setup_scene_object_tools()
+    scene_object = tools["scene_object"]
+
+    captured = {}
+
+    async def fake_send(_send_fn, _unity_instance, _command_type, params, **_kwargs):
+        captured["params"] = params
+        return {
+            "success": True,
+            "data": {
+                "objects": [{"path": "/Water", "name": "Water", "instance_id": 400}],
+                "total": 1,
+            },
+        }
+
+    import services.tools.scene_object as scene_object_mod
+
+    monkeypatch.setattr(scene_object_mod, "send_with_unity_instance", fake_send)
+
+    resp = await scene_object(
+        ctx=DummyContext(),
+        action="list",
+        layer="Water",
+    )
+    assert resp["success"] is True
+    assert captured["params"]["layer"] == "Water"
+
+
+@pytest.mark.asyncio
+async def test_scene_object_list_layer_filter_numeric(monkeypatch):
+    """Test list action with numeric layer filter."""
+    tools = setup_scene_object_tools()
+    scene_object = tools["scene_object"]
+
+    captured = {}
+
+    async def fake_send(_send_fn, _unity_instance, _command_type, params, **_kwargs):
+        captured["params"] = params
+        return {"success": True, "data": {"objects": [], "total": 0}}
+
+    import services.tools.scene_object as scene_object_mod
+
+    monkeypatch.setattr(scene_object_mod, "send_with_unity_instance", fake_send)
+
+    resp = await scene_object(
+        ctx=DummyContext(),
+        action="list",
+        layer=4,
+    )
+    assert resp["success"] is True
+    assert captured["params"]["layer"] == 4
+
+
+@pytest.mark.asyncio
+async def test_scene_object_set_tag_passthrough(monkeypatch):
+    """Test that tag is passed through for auto-creation on C# side."""
+    tools = setup_scene_object_tools()
+    scene_object = tools["scene_object"]
+
+    captured = {}
+
+    async def fake_send(_send_fn, _unity_instance, _command_type, params, **_kwargs):
+        captured["params"] = params
+        return {
+            "success": True,
+            "data": {"path": "/Player", "changes": ["tag"]},
+        }
+
+    import services.tools.scene_object as scene_object_mod
+
+    monkeypatch.setattr(scene_object_mod, "send_with_unity_instance", fake_send)
+
+    resp = await scene_object(
+        ctx=DummyContext(),
+        action="set",
+        target="Player",
+        tag="CustomNewTag",
+    )
+    assert resp["success"] is True
+    assert captured["params"]["tag"] == "CustomNewTag"
+
+
+@pytest.mark.asyncio
+async def test_scene_object_circular_parent_error(monkeypatch):
+    """Test that C# returns error for circular parenting."""
+    tools = setup_scene_object_tools()
+    scene_object = tools["scene_object"]
+
+    async def fake_send(_send_fn, _unity_instance, _command_type, params, **_kwargs):
+        return {
+            "success": False,
+            "error": "Cannot parent 'Parent' to 'Child', as it would create a hierarchy loop.",
+        }
+
+    import services.tools.scene_object as scene_object_mod
+
+    monkeypatch.setattr(scene_object_mod, "send_with_unity_instance", fake_send)
+
+    resp = await scene_object(
+        ctx=DummyContext(),
+        action="set",
+        target="Parent",
+        parent="Child",
+    )
+    assert resp["success"] is False
+    assert "hierarchy loop" in resp["error"]
+
+
+@pytest.mark.asyncio
+async def test_scene_object_create_with_tag_and_layer(monkeypatch):
+    """Test create action passes tag and layer for auto-creation."""
+    tools = setup_scene_object_tools()
+    scene_object = tools["scene_object"]
+
+    captured = {}
+
+    async def fake_send(_send_fn, _unity_instance, _command_type, params, **_kwargs):
+        captured["params"] = params
+        return {
+            "success": True,
+            "data": {"path": "/Enemy", "name": "Enemy", "instance_id": 500},
+        }
+
+    import services.tools.scene_object as scene_object_mod
+
+    monkeypatch.setattr(scene_object_mod, "send_with_unity_instance", fake_send)
+
+    resp = await scene_object(
+        ctx=DummyContext(),
+        action="create",
+        name="Enemy",
+        tag="EnemyTag",
+        layer="Water",
+    )
+    assert resp["success"] is True
+    assert captured["params"]["tag"] == "EnemyTag"
+    assert captured["params"]["layer"] == "Water"
+
+
+@pytest.mark.asyncio
+async def test_scene_object_set_reparent(monkeypatch):
+    """Test set action with reparent."""
+    tools = setup_scene_object_tools()
+    scene_object = tools["scene_object"]
+
+    captured = {}
+
+    async def fake_send(_send_fn, _unity_instance, _command_type, params, **_kwargs):
+        captured["params"] = params
+        return {
+            "success": True,
+            "data": {"path": "/NewParent/Player", "changes": ["parent"]},
+        }
+
+    import services.tools.scene_object as scene_object_mod
+
+    monkeypatch.setattr(scene_object_mod, "send_with_unity_instance", fake_send)
+
+    resp = await scene_object(
+        ctx=DummyContext(),
+        action="set",
+        target="Player",
+        parent="/NewParent",
+    )
+    assert resp["success"] is True
+    assert captured["params"]["parent"] == "/NewParent"
+
+
+@pytest.mark.asyncio
+async def test_scene_object_move_relative_missing_direction_and_offset(monkeypatch):
+    """Test that move_relative passes params even without direction/offset (C# will validate)."""
+    tools = setup_scene_object_tools()
+    scene_object = tools["scene_object"]
+
+    captured = {}
+
+    async def fake_send(_send_fn, _unity_instance, _command_type, params, **_kwargs):
+        captured["params"] = params
+        return {
+            "success": False,
+            "error": "Either 'direction' or 'offset' parameter is required for 'move_relative' action.",
+        }
+
+    import services.tools.scene_object as scene_object_mod
+
+    monkeypatch.setattr(scene_object_mod, "send_with_unity_instance", fake_send)
+
+    resp = await scene_object(
+        ctx=DummyContext(),
+        action="move_relative",
+        target="Chair",
+        reference="Table",
+    )
+    assert resp["success"] is False
+    assert "direction" in resp["error"] or "offset" in resp["error"]
