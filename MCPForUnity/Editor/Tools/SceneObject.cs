@@ -358,8 +358,8 @@ namespace MCPForUnity.Editor.Tools
                 EditorUtility.SetDirty(go);
                 MarkOwningSceneDirty(go);
                 affected.Add(new { path = GetGameObjectPath(go), instance_id = go.GetInstanceID(), changes = setResult.Changes });
-                if (setResult.Error is ErrorResponse err)
-                    errors.Add(new { path = GetGameObjectPath(go), error = err.Error });
+                if (setResult.Error is ErrorResponse setErr)
+                    errors.Add(new { path = GetGameObjectPath(go), error = setErr.Error });
             }
 
             if (errors.Count > 0)
