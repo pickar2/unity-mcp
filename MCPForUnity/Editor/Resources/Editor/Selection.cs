@@ -21,7 +21,7 @@ namespace MCPForUnity.Editor.Resources.Editor
                     activeObject = UnityEditor.Selection.activeObject?.name,
                     activeGameObject = UnityEditor.Selection.activeGameObject?.name,
                     activeTransform = UnityEditor.Selection.activeTransform?.name,
-                    activeInstanceID = UnityEditor.Selection.activeInstanceID,
+                    activeInstanceID = UnityEditor.Selection.activeEntityId,
                     count = UnityEditor.Selection.count,
                     objects = UnityEditor.Selection.objects
                         .Select(obj => new
