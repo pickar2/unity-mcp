@@ -2,6 +2,7 @@ using System.Collections.Generic;
 using System.Linq;
 using NUnit.Framework;
 using UnityEngine;
+using UnityEngine.TestTools;
 using Newtonsoft.Json.Linq;
 using MCPForUnity.Editor.Tools;
 using static MCPForUnityTests.Editor.TestUtilities;
@@ -272,6 +273,7 @@ namespace MCPForUnityTests.Editor.Tools
         [Test]
         public void List_InvalidRegex_ReturnsError()
         {
+            LogAssert.Expect(LogType.Error, new Regex(".*Invalid target_regex pattern.*"));
             var result = ToJObject(SceneObject.HandleCommand(new JObject
             {
                 ["action"] = "list",
@@ -769,41 +771,48 @@ namespace MCPForUnityTests.Editor.Tools
         public void Get_IncludeInternalDefault_False_OmitsInternalProperties()
         {
             var go = CreateTestObject("InternalDefault");
-            go.AddComponent<Rigidbody>();
+            var cube = GameObject.CreatePrimitive(PrimitiveType.Cube);
+            cube.transform.SetParent(go.transform);
+            var renderer = cube.GetComponent<MeshRenderer>();
 
             var result = ToJObject(SceneObject.HandleCommand(new JObject
             {
                 ["action"] = "get",
-                ["target"] = "InternalDefault",
-                ["component"] = "Rigidbody"
+                ["target"] = "InternalDefault/Cube",
+                ["component"] = "MeshRenderer"
             }));
 
             Assert.IsTrue(result.Value<bool>("success"), result.ToString());
             var props = (result["data"]?["components"] as JArray)?[0]?["properties"] as JObject;
             Assert.IsNotNull(props);
-            // 'drag' is an internal/deprecated alias for 'linearDamping'
-            Assert.IsFalse(props.ContainsKey("drag"), "Should omit internal property 'drag' by default");
+            // 'bounds' is in InternalPropertyNames - should be omitted by default
+            Assert.IsFalse(props.ContainsKey("bounds"), "Should omit internal property 'bounds' by default");
+            Object.DestroyImmediate(cube);
         }
 
         [Test]
         public void Get_IncludeInternalTrue_IncludesInternalProperties()
         {
             var go = CreateTestObject("InternalTrue");
-            go.AddComponent<Rigidbody>();
+            var cube = GameObject.CreatePrimitive(PrimitiveType.Cube);
+            cube.transform.SetParent(go.transform);
+            var renderer = cube.GetComponent<MeshRenderer>();
 
             var result = ToJObject(SceneObject.HandleCommand(new JObject
             {
                 ["action"] = "get",
-                ["target"] = "InternalTrue",
-                ["component"] = "Rigidbody",
+                ["target"] = "InternalTrue/Cube",
+                ["component"] = "MeshRenderer",
                 ["includeInternal"] = true
             }));
 
             Assert.IsTrue(result.Value<bool>("success"), result.ToString());
             var props = (result["data"]?["components"] as JArray)?[0]?["properties"] as JObject;
             Assert.IsNotNull(props);
-            // With includeInternal=true, 'drag' should be present
-            Assert.IsTrue(props.ContainsKey("linearDamping"), "Should include 'linearDamping'");
+            // With includeInternal=true, 'bounds' should be present
+            Assert.IsTrue(props.ContainsKey("bounds"), "Should include 'bounds' with includeInternal=true");
+            Object.DestroyImmediate(cube);
+        }
         }
 
         #endregion

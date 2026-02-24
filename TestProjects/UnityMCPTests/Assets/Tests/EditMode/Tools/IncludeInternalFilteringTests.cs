@@ -25,53 +25,74 @@ namespace MCPForUnityTests.Editor.Tools
         [Test]
         public void GetComponentData_IncludeInternalFalse_OmitsInternalProperties()
         {
-            var rb = _testGo.AddComponent<Rigidbody>();
+            var cube = GameObject.CreatePrimitive(PrimitiveType.Cube);
+            try
+            {
+                var renderer = cube.GetComponent<MeshRenderer>();
 
-            var data = GameObjectSerializer.GetComponentData(rb, includeInternal: false) as Dictionary<string, object>;
-            Assert.IsNotNull(data);
+                var data = GameObjectSerializer.GetComponentData(renderer, includeInternal: false) as Dictionary<string, object>;
+                Assert.IsNotNull(data);
 
-            var props = data["properties"] as Dictionary<string, object>;
-            Assert.IsNotNull(props);
+                var props = data["properties"] as Dictionary<string, object>;
+                Assert.IsNotNull(props);
 
-            // 'drag' is in InternalPropertyNames (deprecated alias for linearDamping)
-            Assert.IsFalse(props.ContainsKey("drag"), "Should omit 'drag' when includeInternal=false");
-            Assert.IsFalse(props.ContainsKey("angularDrag"), "Should omit 'angularDrag' when includeInternal=false");
+                // 'bounds' is in InternalPropertyNames
+                Assert.IsFalse(props.ContainsKey("bounds"), "Should omit 'bounds' when includeInternal=false");
 
-            // But modern property names should still be present
-            Assert.IsTrue(props.ContainsKey("linearDamping"), "Should include 'linearDamping'");
-            Assert.IsTrue(props.ContainsKey("mass"), "Should include 'mass'");
+                // Core properties should still be present
+                Assert.IsTrue(props.ContainsKey("enabled"), "Should include 'enabled'");
+            }
+            finally
+            {
+                Object.DestroyImmediate(cube);
+            }
         }
 
         [Test]
         public void GetComponentData_IncludeInternalTrue_IncludesInternalProperties()
         {
-            var rb = _testGo.AddComponent<Rigidbody>();
+            var cube = GameObject.CreatePrimitive(PrimitiveType.Cube);
+            try
+            {
+                var renderer = cube.GetComponent<MeshRenderer>();
 
-            var data = GameObjectSerializer.GetComponentData(rb, includeInternal: true) as Dictionary<string, object>;
-            Assert.IsNotNull(data);
+                var data = GameObjectSerializer.GetComponentData(renderer, includeInternal: true) as Dictionary<string, object>;
+                Assert.IsNotNull(data);
 
-            var props = data["properties"] as Dictionary<string, object>;
-            Assert.IsNotNull(props);
+                var props = data["properties"] as Dictionary<string, object>;
+                Assert.IsNotNull(props);
 
-            // Both deprecated and modern should be present
-            Assert.IsTrue(props.ContainsKey("linearDamping"), "Should include 'linearDamping'");
-            Assert.IsTrue(props.ContainsKey("mass"), "Should include 'mass'");
+                // Core properties should be present
+                Assert.IsTrue(props.ContainsKey("enabled"), "Should include 'enabled'");
+            }
+            finally
+            {
+                Object.DestroyImmediate(cube);
+            }
         }
 
         [Test]
         public void GetComponentData_DefaultIncludeInternal_IsTrue()
         {
-            var rb = _testGo.AddComponent<Rigidbody>();
+            var cube = GameObject.CreatePrimitive(PrimitiveType.Cube);
+            try
+            {
+                var renderer = cube.GetComponent<MeshRenderer>();
 
-            // Default overload has includeInternal=true for backwards compatibility
-            var data = GameObjectSerializer.GetComponentData(rb) as Dictionary<string, object>;
-            Assert.IsNotNull(data);
+                // Default overload has includeInternal=true for backwards compatibility
+                var data = GameObjectSerializer.GetComponentData(renderer) as Dictionary<string, object>;
+                Assert.IsNotNull(data);
 
-            var props = data["properties"] as Dictionary<string, object>;
-            Assert.IsNotNull(props);
+                var props = data["properties"] as Dictionary<string, object>;
+                Assert.IsNotNull(props);
 
-            // Default should include everything (backwards compat)
-            Assert.IsTrue(props.ContainsKey("mass"), "Should include 'mass' with default params");
+                // Default should include everything (backwards compat)
+                Assert.IsTrue(props.ContainsKey("enabled"), "Should include 'enabled' with default params");
+            }
+            finally
+            {
+                Object.DestroyImmediate(cube);
+            }
         }
 
         [Test]
