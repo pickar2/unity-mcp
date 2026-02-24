@@ -27,8 +27,8 @@ namespace MCPForUnityTests.Editor.Tools
                 ["types"] = new JArray { "log" }
             }));
             Assert.IsTrue(getBefore.Value<bool>("success"));
-            var dataBefore = getBefore["data"] as JObject;
-            Assert.Greater(dataBefore?["entries"]?.Count() ?? 0, 0, "Should have logs before clear");
+            var entriesBefore = getBefore["data"]?["entries"] as JArray;
+            Assert.Greater(entriesBefore?.Count ?? 0, 0, "Should have logs before clear");
 
             var result = ToJObject(ReadConsole.HandleCommand(new JObject { ["action"] = "clear" }));
             Assert.IsTrue(result.Value<bool>("success"));
@@ -39,8 +39,8 @@ namespace MCPForUnityTests.Editor.Tools
                 ["types"] = new JArray { "log" }
             }));
             Assert.IsTrue(getAfter.Value<bool>("success"));
-            var dataAfter = getAfter["data"] as JObject;
-            Assert.AreEqual(0, dataAfter?["entries"]?.Count() ?? 0, "Should be empty after clear");
+            var entriesAfter = getAfter["data"]?["entries"] as JArray;
+            Assert.AreEqual(0, entriesAfter?.Count ?? 0, "Should be empty after clear");
         }
 
         [Test]

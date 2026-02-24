@@ -98,7 +98,7 @@ namespace MCPForUnityTests.Editor.Helpers
             _buffer.Add(LogType.Log, "Hello World", null);
             _buffer.Add(LogType.Log, "Goodbye World", null);
 
-            var matches = _buffer.Query(filterText: "hello");
+            var matches = _buffer.Query(filterRegex: "(?i)hello");
 
             Assert.AreEqual(1, matches.Count);
             Assert.AreEqual("Hello World", matches[0].Message);
