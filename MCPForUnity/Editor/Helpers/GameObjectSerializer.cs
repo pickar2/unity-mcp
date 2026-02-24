@@ -633,6 +633,7 @@ namespace MCPForUnity.Editor.Helpers
         {
             Converters = new List<JsonConverter>
             {
+                new Newtonsoft.Json.Converters.StringEnumConverter(), // Serialize enums as string names for agent readability
                 new Vector3Converter(),
                 new Vector2Converter(),
                 new QuaternionConverter(),

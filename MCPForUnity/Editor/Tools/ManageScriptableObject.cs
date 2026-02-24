@@ -1159,15 +1159,18 @@ namespace MCPForUnity.Editor.Tools
         {
             message = null;
             var names = prop.enumNames;
+            var displayNames = prop.enumDisplayNames;
             if (names == null || names.Length == 0) { message = "Enum has no names."; return false; }
 
             if (valueToken.Type == JTokenType.Integer)
             {
-                int idx = valueToken.Value<int>();
-                if (idx < 0 || idx >= names.Length) { message = $"Enum index out of range: {idx}"; return false; }
-                prop.enumValueIndex = idx; message = "Set enum."; return true;
+                // Treat integer as raw enum value, not index into enumNames
+                prop.intValue = valueToken.Value<int>();
+                message = "Set enum.";
+                return true;
             }
 
+            // String: try C# enum member names, then display names
             string s = valueToken.ToString();
             for (int i = 0; i < names.Length; i++)
             {
@@ -1176,7 +1179,18 @@ namespace MCPForUnity.Editor.Tools
                     prop.enumValueIndex = i; message = "Set enum."; return true;
                 }
             }
-            message = $"Unknown enum name '{s}'.";
+            if (displayNames != null)
+            {
+                for (int i = 0; i < displayNames.Length; i++)
+                {
+                    if (string.Equals(displayNames[i], s, StringComparison.OrdinalIgnoreCase))
+                    {
+                        prop.enumValueIndex = i; message = "Set enum."; return true;
+                    }
+                }
+            }
+            string available = string.Join(", ", names);
+            message = $"Unknown enum value '{s}'. Available: {available}";
             return false;
         }
 
