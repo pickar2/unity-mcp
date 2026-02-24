@@ -71,7 +71,9 @@ def _split_uri(uri: str) -> tuple[str, str]:
 
 @mcp_for_unity_tool(
     unity_target="manage_script",
-    description="Searches a file with a regex pattern and returns line numbers and excerpts.",
+    description="Regex search within a Unity project file. Returns line numbers, excerpts, and character offsets. "
+    "Best for agents without host filesystem tools (e.g. Claude Desktop). "
+    "If you have Grep/Read tools in your environment, prefer those for faster results.",
     annotations=ToolAnnotations(
         title="Find in File",
         readOnlyHint=True,

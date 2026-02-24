@@ -899,3 +899,104 @@ async def test_scene_object_move_relative_missing_direction_and_offset(monkeypat
     )
     assert resp["success"] is False
     assert "direction" in resp["error"] or "offset" in resp["error"]
+
+
+@pytest.mark.asyncio
+async def test_scene_object_get_component_filter(monkeypatch):
+    """Test get action with component filter implies components=true."""
+    tools = setup_scene_object_tools()
+    scene_object = tools["scene_object"]
+
+    captured = {}
+
+    async def fake_send(_send_fn, _unity_instance, _command_type, params, **_kwargs):
+        captured["params"] = params
+        return {
+            "success": True,
+            "data": {
+                "path": "/Player",
+                "name": "Player",
+                "components": [
+                    {"typeName": "SpriteRenderer", "properties": {"color": {"r": 1}}}
+                ],
+            },
+        }
+
+    import services.tools.scene_object as scene_object_mod
+
+    monkeypatch.setattr(scene_object_mod, "send_with_unity_instance", fake_send)
+
+    resp = await scene_object(
+        ctx=DummyContext(),
+        action="get",
+        target="/Player",
+        component="SpriteRenderer",
+    )
+    assert resp["success"] is True
+    # component filter should cause components=true to be sent
+    assert captured["params"]["components"] is True
+    assert captured["params"]["component"] == "SpriteRenderer"
+
+
+@pytest.mark.asyncio
+async def test_scene_object_get_component_and_properties(monkeypatch):
+    """Test get action with both component and properties filter."""
+    tools = setup_scene_object_tools()
+    scene_object = tools["scene_object"]
+
+    captured = {}
+
+    async def fake_send(_send_fn, _unity_instance, _command_type, params, **_kwargs):
+        captured["params"] = params
+        return {
+            "success": True,
+            "data": {
+                "path": "/Player",
+                "name": "Player",
+                "components": [
+                    {"typeName": "SpriteRenderer", "properties": {"color": {"r": 1}}}
+                ],
+            },
+        }
+
+    import services.tools.scene_object as scene_object_mod
+
+    monkeypatch.setattr(scene_object_mod, "send_with_unity_instance", fake_send)
+
+    resp = await scene_object(
+        ctx=DummyContext(),
+        action="get",
+        target="/Player",
+        component="SpriteRenderer",
+        properties={"sprite": None, "color": None},
+    )
+    assert resp["success"] is True
+    assert captured["params"]["component"] == "SpriteRenderer"
+    assert captured["params"]["properties"] is not None
+
+
+@pytest.mark.asyncio
+async def test_scene_object_get_components_true_still_works(monkeypatch):
+    """Test that components=true still works without component filter."""
+    tools = setup_scene_object_tools()
+    scene_object = tools["scene_object"]
+
+    captured = {}
+
+    async def fake_send(_send_fn, _unity_instance, _command_type, params, **_kwargs):
+        captured["params"] = params
+        return {"success": True, "data": {"path": "/Player", "components": []}}
+
+    import services.tools.scene_object as scene_object_mod
+
+    monkeypatch.setattr(scene_object_mod, "send_with_unity_instance", fake_send)
+
+    resp = await scene_object(
+        ctx=DummyContext(),
+        action="get",
+        target="/Player",
+        components=True,
+    )
+    assert resp["success"] is True
+    assert captured["params"]["components"] is True
+    assert "component" not in captured["params"]

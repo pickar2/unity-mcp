@@ -101,6 +101,11 @@ namespace MCPForUnity.Runtime.Helpers
 #endif
         }
 
+        public static ScreenshotCaptureResult CaptureWithCameraToAssetsFolder(string fileName = null, int superSize = 1, bool ensureUniqueFileName = true)
+        {
+            return CaptureWithCameraFallback(fileName, superSize, ensureUniqueFileName);
+        }
+
         private static ScreenshotCaptureResult CaptureWithCameraFallback(string fileName, int superSize, bool ensureUniqueFileName)
         {
             if (!s_loggedLegacyScreenCaptureFallback)

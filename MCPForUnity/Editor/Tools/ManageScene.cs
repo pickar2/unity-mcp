@@ -26,6 +26,7 @@ namespace MCPForUnity.Editor.Tools
             public int? buildIndex { get; set; }
             public string fileName { get; set; } = string.Empty;
             public int? superSize { get; set; }
+            public bool synchronous { get; set; }
 
             // get_hierarchy paging + safety (summary-first)
             public JToken parent { get; set; }
@@ -48,6 +49,7 @@ namespace MCPForUnity.Editor.Tools
                 buildIndex = ParamCoercion.CoerceIntNullable(p["buildIndex"] ?? p["build_index"]),
                 fileName = (p["fileName"] ?? p["filename"])?.ToString() ?? string.Empty,
                 superSize = ParamCoercion.CoerceIntNullable(p["superSize"] ?? p["super_size"] ?? p["supersize"]),
+                synchronous = ParamCoercion.CoerceBool(p["synchronous"] ?? p["sync"], false),
 
                 // get_hierarchy paging + safety
                 parent = p["parent"],
@@ -165,7 +167,7 @@ namespace MCPForUnity.Editor.Tools
                 case "get_build_settings":
                     return GetBuildSettingsScenes();
                 case "screenshot":
-                    return CaptureScreenshot(cmd.fileName, cmd.superSize);
+                    return CaptureScreenshot(cmd.fileName, cmd.superSize, cmd.synchronous);
                 // Add cases for modifying build settings, additive loading, unloading etc.
                 default:
                     return new ErrorResponse(
@@ -363,7 +365,7 @@ namespace MCPForUnity.Editor.Tools
             }
         }
 
-        private static object CaptureScreenshot(string fileName, int? superSize)
+        private static object CaptureScreenshot(string fileName, int? superSize, bool synchronous = false)
         {
             try
             {
@@ -379,8 +381,19 @@ namespace MCPForUnity.Editor.Tools
                 bool screenCaptureAvailable = ScreenshotUtility.IsScreenCaptureModuleAvailable;
                 bool hasCameraFallback = Camera.main != null || UnityEngine.Object.FindObjectsByType<Camera>(UnityEngine.FindObjectsSortMode.None).Length > 0;
 
+                // Synchronous mode forces camera fallback (always synchronous)
+                if (synchronous && !hasCameraFallback)
+                {
+                    return new ErrorResponse(
+                        "Synchronous screenshot requires a Camera in the scene. " +
+                        "Add a Camera or use synchronous=false for async ScreenCapture API."
+                    );
+                }
+
+                bool useCameraFallback = synchronous && hasCameraFallback;
+
 #if UNITY_2022_1_OR_NEWER
-                if (!screenCaptureAvailable && !hasCameraFallback)
+                if (!useCameraFallback && !screenCaptureAvailable && !hasCameraFallback)
                 {
                     return new ErrorResponse(
                         "Cannot capture screenshot. The Screen Capture module is not enabled and no Camera was found in the scene. " +
@@ -389,7 +402,7 @@ namespace MCPForUnity.Editor.Tools
                     );
                 }
                 
-                if (!screenCaptureAvailable)
+                if (!useCameraFallback && !screenCaptureAvailable)
                 {
                     McpLog.Warn("[ManageScene] Screen Capture module not enabled. Using camera-based fallback. " +
                         "For best results, enable it: Window > Package Manager > Built-in > Screen Capture > Enable.");
@@ -407,13 +420,21 @@ namespace MCPForUnity.Editor.Tools
                 // Best-effort: ensure Game View exists and repaints before capture.
                 // Only needed for ScreenCapture API - camera fallback renders directly to RenderTexture.
 #if UNITY_2022_1_OR_NEWER
-                if (!Application.isBatchMode && screenCaptureAvailable)
+                if (!useCameraFallback && !Application.isBatchMode && screenCaptureAvailable)
                 {
                     EnsureGameView();
                 }
 #endif
 
-                ScreenshotCaptureResult result = ScreenshotUtility.CaptureToAssetsFolder(fileName, resolvedSuperSize, ensureUniqueFileName: true);
+                ScreenshotCaptureResult result;
+                if (useCameraFallback)
+                {
+                    result = ScreenshotUtility.CaptureWithCameraToAssetsFolder(fileName, resolvedSuperSize, ensureUniqueFileName: true);
+                }
+                else
+                {
+                    result = ScreenshotUtility.CaptureToAssetsFolder(fileName, resolvedSuperSize, ensureUniqueFileName: true);
+                }
 
                 // ScreenCapture.CaptureScreenshot is async. Import after the file actually hits disk.
                 if (result.IsAsync)

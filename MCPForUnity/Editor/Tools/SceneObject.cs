@@ -236,6 +236,25 @@ namespace MCPForUnity.Editor.Tools
                 return new ErrorResponse("'target' parameter is required for 'get' action.");
 
             bool includeComponents = p.GetBool("components", false);
+            string singleComponent = p.Get("component");
+            var propertiesToken = p.GetRaw("properties");
+
+            // If component or properties specified, enable component data even without components=true
+            if (singleComponent != null || propertiesToken != null)
+                includeComponents = true;
+
+            // Parse properties filter list
+            HashSet<string> propertiesFilter = null;
+            if (propertiesToken is JArray propArray)
+            {
+                propertiesFilter = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+                foreach (var item in propArray)
+                {
+                    string val = item?.ToString();
+                    if (!string.IsNullOrEmpty(val))
+                        propertiesFilter.Add(val);
+                }
+            }
 
             var resolveResult = ResolveTargetWithAmbiguity(targetToken);
             if (resolveResult.Error != null)
@@ -243,10 +262,10 @@ namespace MCPForUnity.Editor.Tools
 
             var go = resolveResult.GameObject;
 
-            return new SuccessResponse($"Retrieved object '{go.name}'.", BuildObjectDetail(go, includeComponents));
+            return new SuccessResponse($"Retrieved object '{go.name}'.", BuildObjectDetail(go, includeComponents, singleComponent, propertiesFilter));
         }
 
-        private static object BuildObjectDetail(GameObject go, bool includeComponents)
+        private static object BuildObjectDetail(GameObject go, bool includeComponents, string componentFilter = null, HashSet<string> propertiesFilter = null)
         {
             var t = go.transform;
 
@@ -276,19 +295,56 @@ namespace MCPForUnity.Editor.Tools
 
             if (includeComponents)
             {
-                result["components"] = SerializeComponents(go);
+                result["components"] = SerializeComponents(go, componentFilter, propertiesFilter);
             }
 
             return result;
         }
 
-        private static List<object> SerializeComponents(GameObject go)
+        private static List<object> SerializeComponents(GameObject go, string componentFilter = null, HashSet<string> propertiesFilter = null)
         {
             var list = new List<object>();
             foreach (var comp in go.GetComponents<Component>())
             {
                 if (comp == null) continue;
-                list.Add(GameObjectSerializer.GetComponentData(comp));
+
+                // Filter to specific component type if requested
+                if (componentFilter != null)
+                {
+                    string typeName = comp.GetType().Name;
+                    string fullName = comp.GetType().FullName;
+                    if (!string.Equals(typeName, componentFilter, StringComparison.OrdinalIgnoreCase) &&
+                        !string.Equals(fullName, componentFilter, StringComparison.OrdinalIgnoreCase))
+                        continue;
+                }
+
+                var data = GameObjectSerializer.GetComponentData(comp);
+
+                // Filter to specific properties if requested
+                if (propertiesFilter != null && propertiesFilter.Count > 0 && data is Dictionary<string, object> dataDict)
+                {
+                    if (dataDict.TryGetValue("properties", out var propsObj) && propsObj is Dictionary<string, object> propsDict)
+                    {
+                        var filtered = new Dictionary<string, object>();
+                        foreach (var key in propertiesFilter)
+                        {
+                            // Try exact match first, then case-insensitive
+                            if (propsDict.TryGetValue(key, out var val))
+                            {
+                                filtered[key] = val;
+                            }
+                            else
+                            {
+                                var match = propsDict.FirstOrDefault(kvp => string.Equals(kvp.Key, key, StringComparison.OrdinalIgnoreCase));
+                                if (match.Key != null)
+                                    filtered[match.Key] = match.Value;
+                            }
+                        }
+                        dataDict["properties"] = filtered;
+                    }
+                }
+
+                list.Add(data);
             }
             return list;
         }

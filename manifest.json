@@ -47,7 +47,7 @@
     },
     {
       "name": "find_in_file",
-      "description": "Search for content within Unity project files"
+      "description": "Regex search within Unity project files (for agents without host filesystem tools)"
     },
     {
       "name": "manage_animation",
@@ -74,12 +74,8 @@
       "description": "Load, save, query hierarchy, and manage Unity scenes"
     },
     {
-      "name": "manage_script",
-      "description": "Create, read, and modify C# scripts"
-    },
-    {
       "name": "manage_scriptable_object",
-      "description": "Create and modify ScriptableObjects"
+      "description": "Create, modify, and read ScriptableObjects"
     },
     {
       "name": "manage_shader",

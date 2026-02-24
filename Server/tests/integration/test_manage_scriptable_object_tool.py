@@ -58,7 +58,13 @@ def test_manage_scriptable_object_forwards_modify_params(monkeypatch):
             ctx=ctx,
             action="modify",
             target='{"guid":"abc"}',
-            patches=[{"propertyPath": "materials.Array.size", "op": "array_resize", "value": 2}],
+            patches=[
+                {
+                    "propertyPath": "materials.Array.size",
+                    "op": "array_resize",
+                    "value": 2,
+                }
+            ],
         )
     )
 
@@ -127,4 +133,92 @@ def test_manage_scriptable_object_dry_run_string_coercion(monkeypatch):
     assert captured["params"]["dryRun"] is True
 
 
+def test_manage_scriptable_object_forwards_get_params(monkeypatch):
+    """Test that get action forwards target and properties filter."""
+    captured = {}
 
+    async def fake_async_send(cmd, params, **kwargs):
+        captured["cmd"] = cmd
+        captured["params"] = params
+        return {
+            "success": True,
+            "data": {
+                "targetGuid": "abc123",
+                "targetPath": "Assets/Config/Test.asset",
+                "fields": {"health": 100, "speed": 5.0},
+            },
+        }
+
+    monkeypatch.setattr(mod, "async_send_command_with_retry", fake_async_send)
+
+    ctx = DummyContext()
+    ctx.set_state("unity_instance", "UnityMCPTests@dummy")
+
+    result = asyncio.run(
+        mod.manage_scriptable_object(
+            ctx=ctx,
+            action="get",
+            target={"path": "Assets/Config/Test.asset"},
+            properties=["health", "speed"],
+        )
+    )
+
+    assert result["success"] is True
+    assert captured["cmd"] == "manage_scriptable_object"
+    assert captured["params"]["action"] == "get"
+    assert captured["params"]["target"] == {"path": "Assets/Config/Test.asset"}
+    assert captured["params"]["properties"] == ["health", "speed"]
+
+
+def test_manage_scriptable_object_get_without_properties(monkeypatch):
+    """Test that get action works without properties filter (returns all fields)."""
+    captured = {}
+
+    async def fake_async_send(cmd, params, **kwargs):
+        captured["cmd"] = cmd
+        captured["params"] = params
+        return {"success": True, "data": {"fields": {"health": 100}}}
+
+    monkeypatch.setattr(mod, "async_send_command_with_retry", fake_async_send)
+
+    ctx = DummyContext()
+    ctx.set_state("unity_instance", "UnityMCPTests@dummy")
+
+    result = asyncio.run(
+        mod.manage_scriptable_object(
+            ctx=ctx,
+            action="get",
+            target='{"guid":"abc123"}',
+        )
+    )
+
+    assert result["success"] is True
+    assert captured["params"]["action"] == "get"
+    assert captured["params"]["target"] == {"guid": "abc123"}
+    assert "properties" not in captured["params"]
+
+
+def test_manage_scriptable_object_get_json_string_properties(monkeypatch):
+    """Test that properties can be passed as JSON string (LLM quirk)."""
+    captured = {}
+
+    async def fake_async_send(cmd, params, **kwargs):
+        captured["params"] = params
+        return {"success": True, "data": {"fields": {}}}
+
+    monkeypatch.setattr(mod, "async_send_command_with_retry", fake_async_send)
+
+    ctx = DummyContext()
+    ctx.set_state("unity_instance", "UnityMCPTests@dummy")
+
+    result = asyncio.run(
+        mod.manage_scriptable_object(
+            ctx=ctx,
+            action="get",
+            target={"path": "Assets/Test.asset"},
+            properties='["health", "speed"]',
+        )
+    )
+
+    assert result["success"] is True
+    assert captured["params"]["properties"] == ["health", "speed"]

@@ -32,6 +32,7 @@ namespace MCPForUnity.Editor.Tools
         {
             // NOTE: Action strings are normalized by NormalizeAction() (lowercased, '_'/'-' removed),
             // so we only need the canonical normalized forms here.
+            "get",
             "create",
             "createso",
             "modify",
@@ -67,12 +68,194 @@ namespace MCPForUnity.Editor.Tools
                 return new ErrorResponse(CodeInvalidParams, new { message = $"Unknown action: '{actionRaw}'.", validActions = ValidActions.ToArray() });
             }
 
+            if (string.Equals(action, "get", StringComparison.OrdinalIgnoreCase))
+            {
+                return HandleGet(@params);
+            }
+
             if (IsCreateAction(action))
             {
                 return HandleCreate(@params);
             }
 
             return HandleModify(@params);
+        }
+
+        private static object HandleGet(JObject @params)
+        {
+            if (!TryResolveTarget(@params["target"], out var target, out var targetPath, out var targetGuid, out var err))
+            {
+                return err;
+            }
+
+            var so = new SerializedObject(target);
+            so.Update();
+
+            // Parse optional properties filter
+            HashSet<string> propertiesFilter = null;
+            var propertiesToken = @params["properties"];
+            if (propertiesToken is JArray propArray && propArray.Count > 0)
+            {
+                propertiesFilter = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+                foreach (var item in propArray)
+                {
+                    string val = item?.ToString();
+                    if (!string.IsNullOrEmpty(val))
+                        propertiesFilter.Add(val);
+                }
+            }
+
+            var fields = new Dictionary<string, object>();
+            var prop = so.GetIterator();
+            bool enterChildren = true;
+
+            while (prop.NextVisible(enterChildren))
+            {
+                enterChildren = false;
+
+                // Skip Unity internal properties
+                if (prop.name == "m_Script" || prop.name == "m_ObjectHideFlags")
+                    continue;
+
+                // Apply filter if specified
+                if (propertiesFilter != null && !propertiesFilter.Contains(prop.name))
+                    continue;
+
+                fields[prop.name] = SerializeProperty(prop);
+            }
+
+            return new SuccessResponse(
+                $"Read ScriptableObject '{target.name}'.",
+                new
+                {
+                    targetGuid,
+                    targetPath,
+                    targetTypeName = target.GetType().FullName,
+                    targetName = target.name,
+                    fields
+                }
+            );
+        }
+
+        private static object SerializeProperty(SerializedProperty prop)
+        {
+            switch (prop.propertyType)
+            {
+                case SerializedPropertyType.Integer:
+                    return prop.type == "long" ? prop.longValue : prop.intValue;
+                case SerializedPropertyType.Boolean:
+                    return prop.boolValue;
+                case SerializedPropertyType.Float:
+                    return prop.type == "double" ? prop.doubleValue : prop.floatValue;
+                case SerializedPropertyType.String:
+                    return prop.stringValue;
+                case SerializedPropertyType.Enum:
+                    return prop.enumValueIndex >= 0 && prop.enumValueIndex < prop.enumNames.Length
+                        ? prop.enumNames[prop.enumValueIndex]
+                        : prop.intValue;
+                case SerializedPropertyType.Color:
+                    var c = prop.colorValue;
+                    return new { r = c.r, g = c.g, b = c.b, a = c.a };
+                case SerializedPropertyType.Vector2:
+                    var v2 = prop.vector2Value;
+                    return new { x = v2.x, y = v2.y };
+                case SerializedPropertyType.Vector3:
+                    var v3 = prop.vector3Value;
+                    return new { x = v3.x, y = v3.y, z = v3.z };
+                case SerializedPropertyType.Vector4:
+                    var v4 = prop.vector4Value;
+                    return new { x = v4.x, y = v4.y, z = v4.z, w = v4.w };
+                case SerializedPropertyType.Rect:
+                    var r = prop.rectValue;
+                    return new { x = r.x, y = r.y, width = r.width, height = r.height };
+                case SerializedPropertyType.Bounds:
+                    var b = prop.boundsValue;
+                    return new
+                    {
+                        center = new { x = b.center.x, y = b.center.y, z = b.center.z },
+                        size = new { x = b.size.x, y = b.size.y, z = b.size.z }
+                    };
+                case SerializedPropertyType.Quaternion:
+                    var q = prop.quaternionValue;
+                    return new { x = q.x, y = q.y, z = q.z, w = q.w };
+                case SerializedPropertyType.Vector2Int:
+                    var v2i = prop.vector2IntValue;
+                    return new { x = v2i.x, y = v2i.y };
+                case SerializedPropertyType.Vector3Int:
+                    var v3i = prop.vector3IntValue;
+                    return new { x = v3i.x, y = v3i.y, z = v3i.z };
+                case SerializedPropertyType.RectInt:
+                    var ri = prop.rectIntValue;
+                    return new { x = ri.x, y = ri.y, width = ri.width, height = ri.height };
+                case SerializedPropertyType.BoundsInt:
+                    var bi = prop.boundsIntValue;
+                    return new
+                    {
+                        position = new { x = bi.position.x, y = bi.position.y, z = bi.position.z },
+                        size = new { x = bi.size.x, y = bi.size.y, z = bi.size.z }
+                    };
+                case SerializedPropertyType.AnimationCurve:
+                    var curve = prop.animationCurveValue;
+                    if (curve == null || curve.length == 0)
+                        return new { keys = Array.Empty<object>() };
+                    return new
+                    {
+                        keys = curve.keys.Select(k => new
+                        {
+                            time = k.time,
+                            value = k.value,
+                            inTangent = k.inTangent,
+                            outTangent = k.outTangent,
+                            weightedMode = (int)k.weightedMode,
+                            inWeight = k.inWeight,
+                            outWeight = k.outWeight
+                        }).ToArray()
+                    };
+                case SerializedPropertyType.ObjectReference:
+                    var obj = prop.objectReferenceValue;
+                    if (obj == null)
+                        return null;
+                    var assetPath = AssetDatabase.GetAssetPath(obj);
+                    var guid = string.IsNullOrEmpty(assetPath) ? null : AssetDatabase.AssetPathToGUID(assetPath);
+                    return new
+                    {
+                        name = obj.name,
+                        typeName = obj.GetType().Name,
+                        instanceID = obj.GetInstanceID(),
+                        assetPath = string.IsNullOrEmpty(assetPath) ? null : assetPath,
+                        guid
+                    };
+                case SerializedPropertyType.LayerMask:
+                    return prop.intValue;
+                case SerializedPropertyType.ArraySize:
+                    return prop.intValue;
+                case SerializedPropertyType.Generic:
+                    // Arrays and nested structs/classes
+                    if (prop.isArray)
+                    {
+                        var arr = new List<object>(prop.arraySize);
+                        for (int i = 0; i < prop.arraySize; i++)
+                        {
+                            arr.Add(SerializeProperty(prop.GetArrayElementAtIndex(i)));
+                        }
+                        return arr;
+                    }
+                    // Nested struct/class — serialize children as object
+                    var nested = new Dictionary<string, object>();
+                    var child = prop.Copy();
+                    var end = child.GetEndProperty();
+                    bool enterNested = true;
+                    while (child.NextVisible(enterNested) && !SerializedProperty.EqualContents(child, end))
+                    {
+                        enterNested = false;
+                        nested[child.name] = SerializeProperty(child);
+                    }
+                    return nested.Count > 0 ? nested : null;
+                case SerializedPropertyType.Hash128:
+                    return prop.hash128Value.ToString();
+                default:
+                    return $"<unsupported:{prop.propertyType}>";
+            }
         }
 
         private static object HandleCreate(JObject @params)

@@ -55,6 +55,8 @@ Examples:
   scene_object(action="list", tag="Enemy")
   scene_object(action="list", layer="Water", depth=0)
   scene_object(action="get", target="/Player", components=true)
+  scene_object(action="get", target="/Player", component="SpriteRenderer", properties=["sprite", "color"])
+  scene_object(action="get", target="/Player", component="Rigidbody")
   scene_object(action="set", target="Player", active=false, position=[10, 0, 5])
   scene_object(action="set", target="Player", add_components=["Rigidbody", "BoxCollider"])
   scene_object(action="set", target="Player", add_components=[{"typeName": "Rigidbody", "properties": {"mass": 10}}])
@@ -228,6 +230,10 @@ async def scene_object(
             params["components"] = coerce_bool(components, default=False)
         elif action == "create" and isinstance(components, list):
             params["components"] = components
+
+    # For get: component filter implies components=true on the C# side
+    if action == "get" and component is not None and components is None:
+        params["components"] = True
 
     resp = await send_with_unity_instance(
         async_send_command_with_retry, unity_instance, "scene_object", params

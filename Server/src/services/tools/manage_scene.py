@@ -20,6 +20,7 @@ Examples:
   manage_scene(action="get_active")
   manage_scene(action="screenshot")
   manage_scene(action="screenshot", screenshot_file_name="before_change")
+  manage_scene(action="screenshot", synchronous=true)
   manage_scene(action="create", name="Level2")
   manage_scene(action="load", path="Assets/Scenes/Level2.unity")
   manage_scene(action="save")
@@ -53,6 +54,12 @@ async def manage_scene(
     | None = None,
     screenshot_super_size: Annotated[
         int | str, "Screenshot supersize multiplier (integer ≥1). Optional."
+    ]
+    | None = None,
+    synchronous: Annotated[
+        bool | str,
+        "If true, use synchronous camera-based capture (blocks until file is on disk). "
+        "Requires a Camera in the scene. Default: false (async ScreenCapture API).",
     ]
     | None = None,
     # --- get_hierarchy paging/safety ---
@@ -105,6 +112,10 @@ async def manage_scene(
             params["fileName"] = screenshot_file_name
         if coerced_super_size is not None:
             params["superSize"] = coerced_super_size
+
+        coerced_synchronous = coerce_bool(synchronous, default=None)
+        if coerced_synchronous is not None:
+            params["synchronous"] = coerced_synchronous
 
         # get_hierarchy paging/safety params (optional)
         if parent is not None:
