@@ -98,9 +98,9 @@ async def scene_object(
         "Filter to objects having this component (list) or component type to modify properties on (set).",
     ] = None,
     components: Annotated[
-        bool | list[str | dict] | None,
-        "Include component data in response (get: bool), or list of components to add (create). "
-        'Each element can be a string type name or {"typeName": "Rigidbody", "properties": {"mass": 10}}.',
+        bool | list | str | None,
+        "Include component data in response (get: bool or list of type names to filter). "
+        'For create: list of components to add, each a string or {"typeName": "Rigidbody", "properties": {"mass": 10}}.',
     ] = None,
     add_components: Annotated[
         list[str | dict] | None,
@@ -115,9 +115,10 @@ async def scene_object(
         "Set properties on multiple components: {'Rigidbody': {'mass': 10}, 'Collider': {'isTrigger': true}}",
     ] = None,
     properties: Annotated[
-        dict | list[str] | None,
+        list | dict | str | None,
         "For get: list of property names to read (e.g. ['sprite', 'color']). "
-        "For set: dict of property values (e.g. {'mass': 10}).",
+        "For set: dict of property values (e.g. {'mass': 10}). "
+        "Also accepts JSON string.",
     ] = None,
     name: Annotated[
         str | None, "New name for set/rename/duplicate, or object name for create."
