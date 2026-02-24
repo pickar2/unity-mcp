@@ -642,5 +642,170 @@ namespace MCPForUnityTests.Editor.Tools
         }
 
         #endregion
+
+        #region Get Components List Filter
+
+        [Test]
+        public void Get_ComponentsArray_FiltersToSpecifiedTypes()
+        {
+            var go = CreateTestObject("ComponentsFilterTest");
+            go.AddComponent<Rigidbody>();
+            go.AddComponent<BoxCollider>();
+
+            var result = ToJObject(SceneObject.HandleCommand(new JObject
+            {
+                ["action"] = "get",
+                ["target"] = "ComponentsFilterTest",
+                ["components"] = new JArray("Rigidbody")
+            }));
+
+            Assert.IsTrue(result.Value<bool>("success"), result.ToString());
+            var components = result["data"]?["components"] as JArray;
+            Assert.IsNotNull(components, "Should include components array");
+            Assert.AreEqual(1, components.Count, "Should only include Rigidbody, not BoxCollider");
+            Assert.AreEqual("UnityEngine.Rigidbody", components[0]["typeName"]?.ToString());
+        }
+
+        [Test]
+        public void Get_ComponentsArrayMultiple_FiltersToAllSpecified()
+        {
+            var go = CreateTestObject("MultiComponentsFilter");
+            go.AddComponent<Rigidbody>();
+            go.AddComponent<BoxCollider>();
+            go.AddComponent<AudioSource>();
+
+            var result = ToJObject(SceneObject.HandleCommand(new JObject
+            {
+                ["action"] = "get",
+                ["target"] = "MultiComponentsFilter",
+                ["components"] = new JArray("Rigidbody", "BoxCollider")
+            }));
+
+            Assert.IsTrue(result.Value<bool>("success"), result.ToString());
+            var components = result["data"]?["components"] as JArray;
+            Assert.IsNotNull(components);
+            Assert.AreEqual(2, components.Count, "Should include Rigidbody and BoxCollider only");
+        }
+
+        [Test]
+        public void Get_ComponentsArrayAndComponentParam_MergesFilters()
+        {
+            var go = CreateTestObject("MergedFilter");
+            go.AddComponent<Rigidbody>();
+            go.AddComponent<BoxCollider>();
+
+            var result = ToJObject(SceneObject.HandleCommand(new JObject
+            {
+                ["action"] = "get",
+                ["target"] = "MergedFilter",
+                ["components"] = new JArray("Rigidbody"),
+                ["component"] = "BoxCollider"
+            }));
+
+            Assert.IsTrue(result.Value<bool>("success"), result.ToString());
+            var components = result["data"]?["components"] as JArray;
+            Assert.AreEqual(2, components.Count, "Should include both array and singular filter");
+        }
+
+        #endregion
+
+        #region Get Properties List Filter
+
+        [Test]
+        public void Get_PropertiesArray_FiltersComponentProperties()
+        {
+            var go = CreateTestObject("PropsFilter");
+            var rb = go.AddComponent<Rigidbody>();
+            rb.mass = 5f;
+            rb.useGravity = false;
+
+            var result = ToJObject(SceneObject.HandleCommand(new JObject
+            {
+                ["action"] = "get",
+                ["target"] = "PropsFilter",
+                ["component"] = "Rigidbody",
+                ["properties"] = new JArray("mass")
+            }));
+
+            Assert.IsTrue(result.Value<bool>("success"), result.ToString());
+            var components = result["data"]?["components"] as JArray;
+            Assert.IsNotNull(components);
+            var props = components[0]["properties"] as JObject;
+            Assert.IsNotNull(props);
+            Assert.ContainsKey("mass", props, "Should include 'mass' property");
+            Assert.IsFalse(props.ContainsKey("useGravity"), "Should NOT include 'useGravity' — not in filter");
+        }
+
+        [Test]
+        public void Get_PropertiesArrayMultiple_FiltersAllSpecified()
+        {
+            var go = CreateTestObject("MultiPropsFilter");
+            var rb = go.AddComponent<Rigidbody>();
+            rb.mass = 10f;
+            rb.useGravity = true;
+            rb.isKinematic = true;
+
+            var result = ToJObject(SceneObject.HandleCommand(new JObject
+            {
+                ["action"] = "get",
+                ["target"] = "MultiPropsFilter",
+                ["component"] = "Rigidbody",
+                ["properties"] = new JArray("mass", "isKinematic")
+            }));
+
+            Assert.IsTrue(result.Value<bool>("success"), result.ToString());
+            var props = (result["data"]?["components"] as JArray)?[0]?["properties"] as JObject;
+            Assert.IsNotNull(props);
+            Assert.ContainsKey("mass", props);
+            Assert.ContainsKey("isKinematic", props);
+            Assert.IsFalse(props.ContainsKey("useGravity"), "Should not include unfiltered property");
+        }
+
+        #endregion
+
+        #region Get IncludeInternal
+
+        [Test]
+        public void Get_IncludeInternalDefault_False_OmitsInternalProperties()
+        {
+            var go = CreateTestObject("InternalDefault");
+            go.AddComponent<Rigidbody>();
+
+            var result = ToJObject(SceneObject.HandleCommand(new JObject
+            {
+                ["action"] = "get",
+                ["target"] = "InternalDefault",
+                ["component"] = "Rigidbody"
+            }));
+
+            Assert.IsTrue(result.Value<bool>("success"), result.ToString());
+            var props = (result["data"]?["components"] as JArray)?[0]?["properties"] as JObject;
+            Assert.IsNotNull(props);
+            // 'drag' is an internal/deprecated alias for 'linearDamping'
+            Assert.IsFalse(props.ContainsKey("drag"), "Should omit internal property 'drag' by default");
+        }
+
+        [Test]
+        public void Get_IncludeInternalTrue_IncludesInternalProperties()
+        {
+            var go = CreateTestObject("InternalTrue");
+            go.AddComponent<Rigidbody>();
+
+            var result = ToJObject(SceneObject.HandleCommand(new JObject
+            {
+                ["action"] = "get",
+                ["target"] = "InternalTrue",
+                ["component"] = "Rigidbody",
+                ["includeInternal"] = true
+            }));
+
+            Assert.IsTrue(result.Value<bool>("success"), result.ToString());
+            var props = (result["data"]?["components"] as JArray)?[0]?["properties"] as JObject;
+            Assert.IsNotNull(props);
+            // With includeInternal=true, 'drag' should be present
+            Assert.IsTrue(props.ContainsKey("linearDamping"), "Should include 'linearDamping'");
+        }
+
+        #endregion
     }
 }

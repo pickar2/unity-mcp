@@ -1000,3 +1000,129 @@ async def test_scene_object_get_components_true_still_works(monkeypatch):
     assert resp["success"] is True
     assert captured["params"]["components"] is True
     assert "component" not in captured["params"]
+
+
+@pytest.mark.asyncio
+async def test_scene_object_get_components_list_filter(monkeypatch):
+    """Test get action with components as list of type names."""
+    tools = setup_scene_object_tools()
+    scene_object = tools["scene_object"]
+
+    captured = {}
+
+    async def fake_send(_send_fn, _unity_instance, _command_type, params, **_kwargs):
+        captured["params"] = params
+        return {"success": True, "data": {"path": "/Player", "components": []}}
+
+    import services.tools.scene_object as scene_object_mod
+
+    monkeypatch.setattr(scene_object_mod, "send_with_unity_instance", fake_send)
+
+    resp = await scene_object(
+        ctx=DummyContext(),
+        action="get",
+        target="/Player",
+        components=["SpriteRenderer", "Rigidbody2D"],
+    )
+    assert resp["success"] is True
+    assert captured["params"]["components"] == ["SpriteRenderer", "Rigidbody2D"]
+
+
+@pytest.mark.asyncio
+async def test_scene_object_get_properties_list_filter(monkeypatch):
+    """Test get action with properties as list of names (read filter)."""
+    tools = setup_scene_object_tools()
+    scene_object = tools["scene_object"]
+
+    captured = {}
+
+    async def fake_send(_send_fn, _unity_instance, _command_type, params, **_kwargs):
+        captured["params"] = params
+        return {"success": True, "data": {"path": "/Player", "components": []}}
+
+    import services.tools.scene_object as scene_object_mod
+
+    monkeypatch.setattr(scene_object_mod, "send_with_unity_instance", fake_send)
+
+    resp = await scene_object(
+        ctx=DummyContext(),
+        action="get",
+        target="/Player",
+        component="SpriteRenderer",
+        properties=["sprite", "color", "sortingOrder"],
+    )
+    assert resp["success"] is True
+    assert captured["params"]["properties"] == ["sprite", "color", "sortingOrder"]
+    assert captured["params"]["component"] == "SpriteRenderer"
+
+
+@pytest.mark.asyncio
+async def test_scene_object_get_include_internal_default_omitted(monkeypatch):
+    """Test that include_internal is not sent when not specified (C# defaults to false)."""
+    tools = setup_scene_object_tools()
+    scene_object = tools["scene_object"]
+
+    captured = {}
+
+    async def fake_send(_send_fn, _unity_instance, _command_type, params, **_kwargs):
+        captured["params"] = params
+        return {"success": True, "data": {"path": "/Player"}}
+
+    import services.tools.scene_object as scene_object_mod
+
+    monkeypatch.setattr(scene_object_mod, "send_with_unity_instance", fake_send)
+
+    await scene_object(ctx=DummyContext(), action="get", target="/Player")
+    assert "includeInternal" not in captured["params"]
+
+
+@pytest.mark.asyncio
+async def test_scene_object_get_include_internal_true(monkeypatch):
+    """Test that include_internal=true is sent to Unity."""
+    tools = setup_scene_object_tools()
+    scene_object = tools["scene_object"]
+
+    captured = {}
+
+    async def fake_send(_send_fn, _unity_instance, _command_type, params, **_kwargs):
+        captured["params"] = params
+        return {"success": True, "data": {"path": "/Player"}}
+
+    import services.tools.scene_object as scene_object_mod
+
+    monkeypatch.setattr(scene_object_mod, "send_with_unity_instance", fake_send)
+
+    await scene_object(
+        ctx=DummyContext(),
+        action="get",
+        target="/Player",
+        components=True,
+        include_internal=True,
+    )
+    assert captured["params"]["includeInternal"] is True
+
+
+@pytest.mark.asyncio
+async def test_scene_object_get_include_internal_not_sent_for_set(monkeypatch):
+    """Test that include_internal is only used for get action."""
+    tools = setup_scene_object_tools()
+    scene_object = tools["scene_object"]
+
+    captured = {}
+
+    async def fake_send(_send_fn, _unity_instance, _command_type, params, **_kwargs):
+        captured["params"] = params
+        return {"success": True, "data": {"path": "/Player"}}
+
+    import services.tools.scene_object as scene_object_mod
+
+    monkeypatch.setattr(scene_object_mod, "send_with_unity_instance", fake_send)
+
+    await scene_object(
+        ctx=DummyContext(),
+        action="set",
+        target="/Player",
+        active=False,
+        include_internal=True,
+    )
+    assert "includeInternal" not in captured["params"]

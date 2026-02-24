@@ -16,6 +16,30 @@ namespace MCPForUnity.Editor.Helpers
     /// </summary> 
     public static class GameObjectSerializer
     {
+        // Properties considered engine-internal — skipped when includeInternal=false.
+        // Keeps component output concise for LLM consumption.
+        private static readonly HashSet<string> InternalPropertyNames = new(StringComparer.Ordinal)
+        {
+            // Renderer: lighting, probes, raytracing, batching, LOD
+            "lightmapScaleOffset", "realtimeLightmapScaleOffset",
+            "lightmapIndex", "realtimeLightmapIndex",
+            "rayTracingMode", "rayTracingAccelerationStructureBuildFlags",
+            "rayTracingAccelerationStructureBuildFlagsOverride",
+            "lightProbeUsage", "reflectionProbeUsage", "lightProbeProxyVolumeOverride",
+            "motionVectorGenerationMode", "staticShadowCaster",
+            "isLOD0", "forceMeshLod", "meshLodSelectionBias",
+            "isPartOfStaticBatch", "allowOcclusionWhenDynamic",
+            "rendererPriority", "renderingLayerMask",
+            "localBounds",
+            "materials", "sharedMaterials",
+            "probeAnchor", "sortingLayerID",
+            // Collider/Rigidbody layer masks
+            "excludeLayers", "includeLayers", "forceSendLayers", "forceReceiveLayers",
+            "contactCaptureLayers", "callbackLayers",
+            // Deprecated physics aliases (Rigidbody/Rigidbody2D)
+            "drag", "angularDrag",
+        };
+
         // --- Data Serialization ---
 
         /// <summary>
@@ -161,7 +185,7 @@ namespace MCPForUnity.Editor.Helpers
         /// public properties and fields using reflection, with caching and control over non-public fields.
         /// </summary>
         // Add the flag parameter here
-        public static object GetComponentData(Component c, bool includeNonPublicSerializedFields = true)
+        public static object GetComponentData(Component c, bool includeNonPublicSerializedFields = true, bool includeInternal = true)
         {
             // --- Add Early Logging --- 
             // McpLog.Info($"[GetComponentData] Starting for component: {c?.GetType()?.FullName ?? "null"} (ID: {c?.GetInstanceID() ?? 0})");
@@ -462,6 +486,9 @@ namespace MCPForUnity.Editor.Helpers
                 }
                 // --- End Skip Collider Properties ---
 
+                if (!includeInternal && InternalPropertyNames.Contains(propName))
+                    skipProperty = true;
+
                 // Skip if flagged
                 if (skipProperty)
                 {
@@ -518,6 +545,9 @@ namespace MCPForUnity.Editor.Helpers
             // Use cached fields
             foreach (var fieldInfo in cachedData.SerializableFields)
             {
+                if (!includeInternal && InternalPropertyNames.Contains(fieldInfo.Name))
+                    continue;
+
                 try
                 {
                     // --- Add detailed logging for fields --- 

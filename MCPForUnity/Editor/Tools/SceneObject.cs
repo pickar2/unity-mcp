@@ -235,12 +235,41 @@ namespace MCPForUnity.Editor.Tools
             if (targetToken == null)
                 return new ErrorResponse("'target' parameter is required for 'get' action.");
 
-            bool includeComponents = p.GetBool("components", false);
+            bool includeInternal = p.GetBool("includeInternal", false);
             string singleComponent = p.Get("component");
             var propertiesToken = p.GetRaw("properties");
 
-            // If component or properties specified, enable component data even without components=true
-            if (singleComponent != null || propertiesToken != null)
+            // Parse components param — bool (include all) or array (filter list)
+            bool includeComponents = false;
+            HashSet<string> componentFilters = null;
+
+            var componentsToken = p.GetRaw("components");
+            if (componentsToken is JArray compArray)
+            {
+                includeComponents = true;
+                componentFilters = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+                foreach (var item in compArray)
+                {
+                    string val = item?.ToString();
+                    if (!string.IsNullOrEmpty(val))
+                        componentFilters.Add(val);
+                }
+            }
+            else
+            {
+                includeComponents = p.GetBool("components", false);
+            }
+
+            // Merge singular component param into filter set
+            if (singleComponent != null)
+            {
+                includeComponents = true;
+                componentFilters ??= new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+                componentFilters.Add(singleComponent);
+            }
+
+            // If properties specified, enable component data
+            if (propertiesToken != null)
                 includeComponents = true;
 
             // Parse properties filter list
@@ -262,10 +291,10 @@ namespace MCPForUnity.Editor.Tools
 
             var go = resolveResult.GameObject;
 
-            return new SuccessResponse($"Retrieved object '{go.name}'.", BuildObjectDetail(go, includeComponents, singleComponent, propertiesFilter));
+            return new SuccessResponse($"Retrieved object '{go.name}'.", BuildObjectDetail(go, includeComponents, componentFilters, propertiesFilter, includeInternal));
         }
 
-        private static object BuildObjectDetail(GameObject go, bool includeComponents, string componentFilter = null, HashSet<string> propertiesFilter = null)
+        private static object BuildObjectDetail(GameObject go, bool includeComponents, HashSet<string> componentFilters = null, HashSet<string> propertiesFilter = null, bool includeInternal = true)
         {
             var t = go.transform;
 
@@ -295,30 +324,29 @@ namespace MCPForUnity.Editor.Tools
 
             if (includeComponents)
             {
-                result["components"] = SerializeComponents(go, componentFilter, propertiesFilter);
+                result["components"] = SerializeComponents(go, componentFilters, propertiesFilter, includeInternal);
             }
 
             return result;
         }
 
-        private static List<object> SerializeComponents(GameObject go, string componentFilter = null, HashSet<string> propertiesFilter = null)
+        private static List<object> SerializeComponents(GameObject go, HashSet<string> componentFilters = null, HashSet<string> propertiesFilter = null, bool includeInternal = true)
         {
             var list = new List<object>();
             foreach (var comp in go.GetComponents<Component>())
             {
                 if (comp == null) continue;
 
-                // Filter to specific component type if requested
-                if (componentFilter != null)
+                // Filter to specific component types if requested
+                if (componentFilters != null && componentFilters.Count > 0)
                 {
                     string typeName = comp.GetType().Name;
                     string fullName = comp.GetType().FullName;
-                    if (!string.Equals(typeName, componentFilter, StringComparison.OrdinalIgnoreCase) &&
-                        !string.Equals(fullName, componentFilter, StringComparison.OrdinalIgnoreCase))
+                    if (!componentFilters.Contains(typeName) && !componentFilters.Contains(fullName))
                         continue;
                 }
 
-                var data = GameObjectSerializer.GetComponentData(comp);
+                var data = GameObjectSerializer.GetComponentData(comp, includeInternal: includeInternal);
 
                 // Filter to specific properties if requested
                 if (propertiesFilter != null && propertiesFilter.Count > 0 && data is Dictionary<string, object> dataDict)

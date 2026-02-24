@@ -23,7 +23,7 @@ namespace MCPForUnity.Editor.Tools
         /// <summary>
         /// Main handler for editor management actions.
         /// </summary>
-        public static async Task<object> HandleCommand(JObject @params)
+        public static object HandleCommand(JObject @params)
         {
             // Step 1: Null parameter guard (consistent across all tools)
             if (@params == null)

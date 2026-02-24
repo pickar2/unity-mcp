@@ -329,11 +329,11 @@ namespace MCPForUnity.Editor.Tools
                 .Select(m =>
                 {
                     var ps = m.GetParameters();
-                    return new Dictionary<string, object>
+                    return (object)new Dictionary<string, object>
                     {
                         ["name"] = m.Name,
                         ["returnType"] = m.ReturnType == typeof(void) ? "void" : m.ReturnType.Name,
-                        ["parameters"] = ps.Select(param => new Dictionary<string, object>
+                        ["parameters"] = ps.Select(param => (object)new Dictionary<string, object>
                         {
                             ["name"] = param.Name,
                             ["type"] = param.ParameterType.Name,

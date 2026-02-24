@@ -56,7 +56,8 @@ Examples:
   scene_object(action="list", layer="Water", depth=0)
   scene_object(action="get", target="/Player", components=true)
   scene_object(action="get", target="/Player", component="SpriteRenderer", properties=["sprite", "color"])
-  scene_object(action="get", target="/Player", component="Rigidbody")
+  scene_object(action="get", target="/Player", components=["SpriteRenderer", "Rigidbody2D"])
+  scene_object(action="get", target="/Player", component="Rigidbody", include_internal=true)
   scene_object(action="set", target="Player", active=false, position=[10, 0, 5])
   scene_object(action="set", target="Player", add_components=["Rigidbody", "BoxCollider"])
   scene_object(action="set", target="Player", add_components=[{"typeName": "Rigidbody", "properties": {"mass": 10}}])
@@ -114,8 +115,9 @@ async def scene_object(
         "Set properties on multiple components: {'Rigidbody': {'mass': 10}, 'Collider': {'isTrigger': true}}",
     ] = None,
     properties: Annotated[
-        dict | None,
-        "Properties to set on a single component (use with 'component' param).",
+        dict | list[str] | None,
+        "For get: list of property names to read (e.g. ['sprite', 'color']). "
+        "For set: dict of property values (e.g. {'mass': 10}).",
     ] = None,
     name: Annotated[
         str | None, "New name for set/rename/duplicate, or object name for create."
@@ -162,6 +164,10 @@ async def scene_object(
     ] = None,
     include_inactive: Annotated[
         bool | None, "Include inactive objects in list. Default: true."
+    ] = None,
+    include_internal: Annotated[
+        bool | None,
+        "Include engine-internal properties (lightmap, raytracing, LOD, layer masks, deprecated aliases). Default: false.",
     ] = None,
     page_size: Annotated[
         int | None, "Page size for list pagination. Default: 50."
@@ -227,13 +233,21 @@ async def scene_object(
 
     if components is not None:
         if action == "get":
-            params["components"] = coerce_bool(components, default=False)
+            if isinstance(components, list):
+                params["components"] = components
+            else:
+                params["components"] = coerce_bool(components, default=False)
         elif action == "create" and isinstance(components, list):
             params["components"] = components
 
     # For get: component filter implies components=true on the C# side
     if action == "get" and component is not None and components is None:
         params["components"] = True
+
+    if action == "get":
+        include_int = coerce_bool(include_internal, default=None)
+        if include_int is not None:
+            params["includeInternal"] = include_int
 
     resp = await send_with_unity_instance(
         async_send_command_with_retry, unity_instance, "scene_object", params
