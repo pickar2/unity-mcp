@@ -28,12 +28,12 @@ namespace MCPForUnityTests.Editor.Tools
         public void AutoDiscovery_RegistersAllBuiltInTools()
         {
             // Verify that all expected built-in tools are registered by trying to get their handlers
-            var expectedTools = new[]
+            // Sync tools: verify GetHandler returns a callable delegate
+            var syncTools = new[]
             {
                 "manage_asset",
                 "manage_editor",
                 "scene_object",
-                "manage_scene",
                 "manage_script",
                 "manage_shader",
                 "read_console",
@@ -41,7 +41,7 @@ namespace MCPForUnityTests.Editor.Tools
                 "manage_prefabs"
             };
 
-            foreach (var toolName in expectedTools)
+            foreach (var toolName in syncTools)
             {
                 var handler = CommandRegistry.GetHandler(toolName);
                 Assert.IsNotNull(handler, $"Handler for '{toolName}' should not be null");
@@ -50,6 +50,14 @@ namespace MCPForUnityTests.Editor.Tools
                 var emptyParams = new Newtonsoft.Json.Linq.JObject();
                 var result = handler(emptyParams);
                 Assert.IsNotNull(result, $"Handler for '{toolName}' should return a result even for empty params");
+            }
+
+            // Async tools: verify they are registered (GetHandler throws for async, which is expected)
+            var asyncTools = new[] { "manage_scene" };
+            foreach (var toolName in asyncTools)
+            {
+                Assert.Throws<System.InvalidOperationException>(() => CommandRegistry.GetHandler(toolName),
+                    $"Async handler for '{toolName}' should throw InvalidOperationException from GetHandler");
             }
         }
     }

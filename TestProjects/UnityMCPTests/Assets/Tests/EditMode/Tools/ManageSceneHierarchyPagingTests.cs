@@ -50,7 +50,7 @@ namespace MCPForUnityTests.Editor.Tools
                 ["action"] = "get_hierarchy",
                 ["pageSize"] = 10,
             };
-            var raw1 = ManageScene.HandleCommand(p1);
+            var raw1 = ManageScene.HandleCommand(p1).Result;
             var res1 = raw1 as JObject ?? JObject.FromObject(raw1);
 
             // Assert: envelope success + payload shape
@@ -73,7 +73,7 @@ namespace MCPForUnityTests.Editor.Tools
                 ["pageSize"] = 10,
                 ["cursor"] = cursor,
             };
-            var raw2 = ManageScene.HandleCommand(p2);
+            var raw2 = ManageScene.HandleCommand(p2).Result;
             var res2 = raw2 as JObject ?? JObject.FromObject(raw2);
             Assert.IsTrue(res2.Value<bool>("success"), res2.ToString());
             var data2 = res2["data"] as JObject;
@@ -89,7 +89,7 @@ namespace MCPForUnityTests.Editor.Tools
                 ["parent"] = _root.GetInstanceID(),
                 ["pageSize"] = 7,
             };
-            var rawChildren = ManageScene.HandleCommand(pChildren);
+            var rawChildren = ManageScene.HandleCommand(pChildren).Result;
             var resChildren = rawChildren as JObject ?? JObject.FromObject(rawChildren);
             Assert.IsTrue(resChildren.Value<bool>("success"), resChildren.ToString());
             var dataChildren = resChildren["data"] as JObject;

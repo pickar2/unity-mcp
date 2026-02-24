@@ -397,11 +397,11 @@ namespace MCPForUnity.Editor.Windows.Components.Tools
             return container;
         }
 
-        private void OnManageSceneScreenshotClicked()
+        private async void OnManageSceneScreenshotClicked()
         {
             try
             {
-                var response = ManageScene.ExecuteScreenshot();
+                var response = await ManageScene.ExecuteScreenshot();
                 if (response is SuccessResponse success && !string.IsNullOrWhiteSpace(success.Message))
                 {
                     McpLog.Info(success.Message);

@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Threading.Tasks;
 using MCPForUnity.Editor.Helpers; // For Response class
 using MCPForUnity.Runtime.Helpers; // For ScreenshotUtility
 using Newtonsoft.Json.Linq;
@@ -65,7 +66,7 @@ namespace MCPForUnity.Editor.Tools
         /// <summary>
         /// Main handler for scene management actions.
         /// </summary>
-        public static object HandleCommand(JObject @params)
+        public static async Task<object> HandleCommand(JObject @params)
         {
             try { McpLog.Info("[ManageScene] HandleCommand: start", always: false); } catch { }
             var cmd = ToSceneCommand(@params);
@@ -167,7 +168,7 @@ namespace MCPForUnity.Editor.Tools
                 case "get_build_settings":
                     return GetBuildSettingsScenes();
                 case "screenshot":
-                    return CaptureScreenshot(cmd.fileName, cmd.superSize, cmd.synchronous);
+                    return await CaptureScreenshotAsync(cmd.fileName, cmd.superSize, cmd.synchronous);
                 // Add cases for modifying build settings, additive loading, unloading etc.
                 default:
                     return new ErrorResponse(
@@ -181,9 +182,9 @@ namespace MCPForUnity.Editor.Tools
         /// Public so the tools UI can reuse the same logic without duplicating parameters.
         /// Available in both Edit Mode and Play Mode.
         /// </summary>
-        public static object ExecuteScreenshot(string fileName = null, int? superSize = null)
+        public static Task<object> ExecuteScreenshot(string fileName = null, int? superSize = null)
         {
-            return CaptureScreenshot(fileName, superSize);
+            return CaptureScreenshotAsync(fileName, superSize);
         }
 
         private static object CreateScene(string fullPath, string relativePath)
@@ -365,7 +366,7 @@ namespace MCPForUnity.Editor.Tools
             }
         }
 
-        private static object CaptureScreenshot(string fileName, int? superSize, bool synchronous = false)
+        private static async Task<object> CaptureScreenshotAsync(string fileName, int? superSize, bool synchronous = false)
         {
             try
             {
@@ -381,19 +382,11 @@ namespace MCPForUnity.Editor.Tools
                 bool screenCaptureAvailable = ScreenshotUtility.IsScreenCaptureModuleAvailable;
                 bool hasCameraFallback = Camera.main != null || UnityEngine.Object.FindObjectsByType<Camera>(UnityEngine.FindObjectsSortMode.None).Length > 0;
 
-                // Synchronous mode forces camera fallback (always synchronous)
-                if (synchronous && !hasCameraFallback)
-                {
-                    return new ErrorResponse(
-                        "Synchronous screenshot requires a Camera in the scene. " +
-                        "Add a Camera or use synchronous=false for async ScreenCapture API."
-                    );
-                }
-
-                bool useCameraFallback = synchronous && hasCameraFallback;
+                // Use camera fallback only when ScreenCapture module is unavailable
+                bool useCameraFallback = !screenCaptureAvailable;
 
 #if UNITY_2022_1_OR_NEWER
-                if (!useCameraFallback && !screenCaptureAvailable && !hasCameraFallback)
+                if (useCameraFallback && !hasCameraFallback)
                 {
                     return new ErrorResponse(
                         "Cannot capture screenshot. The Screen Capture module is not enabled and no Camera was found in the scene. " +
@@ -402,9 +395,10 @@ namespace MCPForUnity.Editor.Tools
                     );
                 }
                 
-                if (!useCameraFallback && !screenCaptureAvailable)
+                if (useCameraFallback)
                 {
                     McpLog.Warn("[ManageScene] Screen Capture module not enabled. Using camera-based fallback. " +
+                        "UI overlays (Screen Space - Overlay) will not appear. " +
                         "For best results, enable it: Window > Package Manager > Built-in > Screen Capture > Enable.");
                 }
 #else
@@ -415,16 +409,14 @@ namespace MCPForUnity.Editor.Tools
                         "Please add a Camera to your scene or upgrade to Unity 2022.1+ for ScreenCapture API support."
                     );
                 }
+                useCameraFallback = true;
 #endif
 
                 // Best-effort: ensure Game View exists and repaints before capture.
-                // Only needed for ScreenCapture API - camera fallback renders directly to RenderTexture.
-#if UNITY_2022_1_OR_NEWER
-                if (!useCameraFallback && !Application.isBatchMode && screenCaptureAvailable)
+                if (!useCameraFallback && !Application.isBatchMode)
                 {
                     EnsureGameView();
                 }
-#endif
 
                 ScreenshotCaptureResult result;
                 if (useCameraFallback)
@@ -436,29 +428,32 @@ namespace MCPForUnity.Editor.Tools
                     result = ScreenshotUtility.CaptureToAssetsFolder(fileName, resolvedSuperSize, ensureUniqueFileName: true);
                 }
 
-                // ScreenCapture.CaptureScreenshot is async. Import after the file actually hits disk.
                 if (result.IsAsync)
                 {
-                    ScheduleAssetImportWhenFileExists(result.AssetsRelativePath, result.FullPath, timeoutSeconds: 30.0);
+                    // ScreenCapture.CaptureScreenshot writes at end of frame.
+                    // Defer the MCP response until the file appears on disk.
+                    await WaitForFileAsync(result.FullPath, TimeSpan.FromSeconds(10));
+                    AssetDatabase.ImportAsset(result.AssetsRelativePath, ImportAssetOptions.ForceSynchronousImport);
                 }
                 else
                 {
                     AssetDatabase.ImportAsset(result.AssetsRelativePath, ImportAssetOptions.ForceSynchronousImport);
                 }
 
-                string verb = result.IsAsync ? "Screenshot requested" : "Screenshot captured";
-                string message = $"{verb} to '{result.AssetsRelativePath}' (full: {result.FullPath}).";
-
                 return new SuccessResponse(
-                    message,
+                    $"Screenshot captured to '{result.AssetsRelativePath}' (full: {result.FullPath}).",
                     new
                     {
                         path = result.AssetsRelativePath,
                         fullPath = result.FullPath,
                         superSize = result.SuperSize,
-                        isAsync = result.IsAsync,
+                        isAsync = false,
                     }
                 );
+            }
+            catch (TimeoutException)
+            {
+                return new ErrorResponse("Screenshot capture timed out waiting for file to be written. The Game View may not have rendered a frame.");
             }
             catch (Exception e)
             {
@@ -468,63 +463,67 @@ namespace MCPForUnity.Editor.Tools
 
         private static void EnsureGameView()
         {
+            // Repaint any existing Game View windows without stealing focus.
+            // GetWindow was removed previously because it steals focus even with focus:false.
+            // FindObjectsOfTypeAll finds existing windows without creating or focusing them.
+            var gameViewType = System.Type.GetType("UnityEditor.GameView,UnityEditor");
+            if (gameViewType != null)
+            {
+                foreach (var view in UnityEngine.Resources.FindObjectsOfTypeAll(gameViewType))
+                {
+                    if (view is EditorWindow window)
+                        window.Repaint();
+                }
+            }
+
             SceneView.RepaintAll();
             EditorApplication.QueuePlayerLoopUpdate();
         }
 
-        private static void ScheduleAssetImportWhenFileExists(string assetsRelativePath, string fullPath, double timeoutSeconds)
+        /// <summary>
+        /// Waits for a file to appear on disk using EditorApplication.update polling.
+        /// Defers the MCP response until the file is ready (used for ScreenCapture async writes).
+        /// </summary>
+        private static Task WaitForFileAsync(string fullPath, TimeSpan timeout)
         {
-            if (string.IsNullOrWhiteSpace(assetsRelativePath) || string.IsNullOrWhiteSpace(fullPath))
-            {
-                McpLog.Warn("[ManageScene] ScheduleAssetImportWhenFileExists: invalid paths provided, skipping import scheduling.");
-                return;
-            }
+            var tcs = new System.Threading.Tasks.TaskCompletionSource<bool>(
+                System.Threading.Tasks.TaskCreationOptions.RunContinuationsAsynchronously);
+            var start = DateTime.UtcNow;
 
-            double start = EditorApplication.timeSinceStartup;
-            int failureCount = 0;
-            bool hasSeenFile = false;
-            const int maxLoggedFailures = 3;
-            EditorApplication.CallbackFunction tick = null;
-            tick = () =>
+            void Tick()
             {
                 try
                 {
-                    if (File.Exists(fullPath))
+                    if (tcs.Task.IsCompleted)
                     {
-                        hasSeenFile = true;
-
-                        AssetDatabase.ImportAsset(assetsRelativePath, ImportAssetOptions.ForceSynchronousImport);
-                        McpLog.Debug($"[ManageScene] Imported asset at '{assetsRelativePath}'.");
-                        EditorApplication.update -= tick;
+                        EditorApplication.update -= Tick;
                         return;
                     }
+
+                    if (File.Exists(fullPath))
+                    {
+                        EditorApplication.update -= Tick;
+                        tcs.TrySetResult(true);
+                        return;
+                    }
+
+                    if ((DateTime.UtcNow - start) > timeout)
+                    {
+                        EditorApplication.update -= Tick;
+                        tcs.TrySetException(new TimeoutException(
+                            $"Timed out after {timeout.TotalSeconds:F0}s waiting for screenshot file '{fullPath}'."));
+                    }
                 }
-                catch (Exception e)
+                catch (Exception ex)
                 {
-                    failureCount++;
-
-                    if (failureCount <= maxLoggedFailures)
-                    {
-                        McpLog.Warn($"[ManageScene] Exception while importing asset '{assetsRelativePath}' from '{fullPath}' (attempt {failureCount}): {e}");
-                    }
+                    EditorApplication.update -= Tick;
+                    tcs.TrySetException(ex);
                 }
+            }
 
-                if (EditorApplication.timeSinceStartup - start > timeoutSeconds)
-                {
-                    if (!hasSeenFile)
-                    {
-                        McpLog.Warn($"[ManageScene] Timed out waiting for file '{fullPath}' (asset: '{assetsRelativePath}') after {timeoutSeconds:F1} seconds. The asset was not imported.");
-                    }
-                    else
-                    {
-                        McpLog.Warn($"[ManageScene] Timed out importing asset '{assetsRelativePath}' from '{fullPath}' after {timeoutSeconds:F1} seconds. The file existed but the asset was not imported.");
-                    }
-
-                    EditorApplication.update -= tick;
-                }
-            };
-
-            EditorApplication.update += tick;
+            EditorApplication.update += Tick;
+            try { EditorApplication.QueuePlayerLoopUpdate(); } catch { }
+            return tcs.Task;
         }
 
         private static object GetActiveSceneInfo()
