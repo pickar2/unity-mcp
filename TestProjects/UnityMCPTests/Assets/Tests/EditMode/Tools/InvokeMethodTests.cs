@@ -44,7 +44,7 @@ namespace MCPForUnityTests.Editor.Tools
         {
             var result = ToJObject(InvokeMethod.HandleCommand(new JObject()));
             Assert.IsFalse(result.Value<bool>("success"));
-            Assert.IsTrue(result.Value<string>("message").Contains("method"));
+            Assert.IsTrue(result.Value<string>("error").Contains("method"));
         }
 
         [Test]
@@ -55,8 +55,8 @@ namespace MCPForUnityTests.Editor.Tools
                 ["method"] = "Foo"
             }));
             Assert.IsFalse(result.Value<bool>("success"));
-            Assert.IsTrue(result.Value<string>("message").Contains("target") ||
-                          result.Value<string>("message").Contains("type"));
+            Assert.IsTrue(result.Value<string>("error").Contains("target") ||
+                          result.Value<string>("error").Contains("type"));
         }
 
         [Test]
@@ -70,7 +70,7 @@ namespace MCPForUnityTests.Editor.Tools
                 ["target"] = "InvokeTestObj"
             }));
             Assert.IsFalse(result.Value<bool>("success"));
-            Assert.IsTrue(result.Value<string>("message").Contains("component"));
+            Assert.IsTrue(result.Value<string>("error").Contains("component"));
         }
 
         [Test]
@@ -83,7 +83,7 @@ namespace MCPForUnityTests.Editor.Tools
                 ["component"] = "Transform"
             }));
             Assert.IsFalse(result.Value<bool>("success"));
-            Assert.IsTrue(result.Value<string>("message").Contains("not found"));
+            Assert.IsTrue(result.Value<string>("error").Contains("not found"));
         }
 
         [Test]
@@ -98,7 +98,7 @@ namespace MCPForUnityTests.Editor.Tools
                 ["component"] = "NonExistentComponent_XYZ"
             }));
             Assert.IsFalse(result.Value<bool>("success"));
-            Assert.IsTrue(result.Value<string>("message").Contains("not found"));
+            Assert.IsTrue(result.Value<string>("error").Contains("not found"));
         }
 
         [Test]
@@ -113,7 +113,7 @@ namespace MCPForUnityTests.Editor.Tools
                 ["component"] = "Rigidbody"
             }));
             Assert.IsFalse(result.Value<bool>("success"));
-            Assert.IsTrue(result.Value<string>("message").Contains("not found on"));
+            Assert.IsTrue(result.Value<string>("error").Contains("not found on"));
         }
 
         [Test]
@@ -128,7 +128,7 @@ namespace MCPForUnityTests.Editor.Tools
                 ["component"] = "Transform"
             }));
             Assert.IsFalse(result.Value<bool>("success"));
-            Assert.IsTrue(result.Value<string>("message").Contains("not found"));
+            Assert.IsTrue(result.Value<string>("error").Contains("not found"));
             Assert.IsNotNull(result["data"]?["availableMethods"], "Should list available methods");
         }
 
@@ -309,7 +309,7 @@ namespace MCPForUnityTests.Editor.Tools
                 ["type"] = "CompletelyFakeType_XYZ"
             }));
             Assert.IsFalse(result.Value<bool>("success"));
-            Assert.IsTrue(result.Value<string>("message").Contains("not found"));
+            Assert.IsTrue(result.Value<string>("error").Contains("not found"));
         }
 
         [Test]
@@ -411,7 +411,7 @@ namespace MCPForUnityTests.Editor.Tools
             }));
 
             Assert.IsFalse(result.Value<bool>("success"));
-            Assert.IsTrue(result.Value<string>("message").Contains("threw an exception"));
+            Assert.IsTrue(result.Value<string>("error").Contains("threw an exception"));
         }
 
         [Test]

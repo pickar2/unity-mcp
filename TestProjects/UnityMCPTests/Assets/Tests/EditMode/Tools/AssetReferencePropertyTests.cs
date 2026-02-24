@@ -237,10 +237,14 @@ namespace MCPForUnityTests.Editor.Tools
                 var result = ToJObject(ManageScriptableObject.HandleCommand(new JObject
                 {
                     ["action"] = "modify",
-                    ["target_guid"] = AssetDatabase.AssetPathToGUID(soPath),
-                    ["properties"] = new JObject
+                    ["target"] = new JObject { ["path"] = soPath },
+                    ["patches"] = new JArray
                     {
-                        ["spriteRef"] = _texturePath
+                        new JObject
+                        {
+                            ["propertyPath"] = "spriteRef",
+                            ["value"] = _texturePath
+                        }
                     }
                 }));
 

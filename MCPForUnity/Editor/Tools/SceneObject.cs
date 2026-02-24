@@ -21,6 +21,13 @@ namespace MCPForUnity.Editor.Tools
             if (@params == null)
                 return new ErrorResponse("Parameters cannot be null.");
 
+            // Coerce JSON string parameters (MCP clients may stringify them)
+            JsonUtil.CoerceJsonStringParameter(@params, "component_properties");
+            JsonUtil.CoerceJsonStringParameter(@params, "componentProperties");
+            // properties and components can be arrays or objects — use token-level coercion
+            JsonUtil.CoerceJsonStringToken(@params, "properties");
+            JsonUtil.CoerceJsonStringToken(@params, "components");
+
             var p = new ToolParams(@params);
             string action = p.Get("action", "get").ToLowerInvariant();
 
@@ -346,7 +353,10 @@ namespace MCPForUnity.Editor.Tools
                         continue;
                 }
 
-                var data = GameObjectSerializer.GetComponentData(comp, includeInternal: includeInternal);
+                // If the caller explicitly requested specific properties, bypass internal filtering
+                // so the agent gets exactly what it asked for. The propertiesFilter narrows the output anyway.
+                bool effectiveIncludeInternal = (propertiesFilter != null && propertiesFilter.Count > 0) || includeInternal;
+                var data = GameObjectSerializer.GetComponentData(comp, includeInternal: effectiveIncludeInternal);
 
                 // Filter to specific properties if requested
                 if (propertiesFilter != null && propertiesFilter.Count > 0 && data is Dictionary<string, object> dataDict)

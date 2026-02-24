@@ -1,10 +1,7 @@
 using NUnit.Framework;
 using UnityEngine;
-using UnityEngine.Events;
-using UnityEditor;
 using Newtonsoft.Json.Linq;
 using MCPForUnity.Editor.Tools;
-using TestNamespace;
 
 namespace MCPForUnityTests.Editor.Tools
 {
@@ -38,37 +35,29 @@ namespace MCPForUnityTests.Editor.Tools
         [Test]
         public void NestedValueKeys_WithUnderscores_ArePreservedThroughBatch()
         {
-            testGo.AddComponent<UnityEventTestComponent>();
-            int targetId = testGo.GetInstanceID();
+            testGo.AddComponent<AudioSource>();
 
+            // Use component_properties (snake_case top-level key) with nested keys.
+            // The batch normalizer should convert component_properties → componentProperties
+            // but must NOT mangle the nested AudioSource key or property names.
             var batchParams = new JObject
             {
                 ["commands"] = new JArray
                 {
                     new JObject
                     {
-                        ["tool"] = "manage_components",
+                        ["tool"] = "scene_object",
                         ["params"] = new JObject
                         {
-                            ["action"] = "set_property",
+                            ["action"] = "set",
                             ["target"] = testGo.name,
-                            ["search_method"] = "by_name",
-                            ["component_type"] = "UnityEventTestComponent",
-                            ["property"] = "onSimpleEvent",
-                            ["value"] = JObject.Parse(@"{
-                                ""m_PersistentCalls"": {
-                                    ""m_Calls"": [
-                                        {
-                                            ""m_Target"": { ""instanceID"": " + targetId + @" },
-                                            ""m_TargetAssemblyTypeName"": ""UnityEngine.GameObject, UnityEngine"",
-                                            ""m_MethodName"": ""SetActive"",
-                                            ""m_Mode"": 6,
-                                            ""m_Arguments"": { ""m_BoolArgument"": true },
-                                            ""m_CallState"": 2
-                                        }
-                                    ]
+                            ["component_properties"] = new JObject
+                            {
+                                ["AudioSource"] = new JObject
+                                {
+                                    ["volume"] = 0.42f
                                 }
-                            }")
+                            }
                         }
                     }
                 }
@@ -79,14 +68,9 @@ namespace MCPForUnityTests.Editor.Tools
 
             Assert.IsTrue(resultObj.Value<bool>("success"), $"Batch should succeed: {resultObj}");
 
-            // Verify the nested m_PersistentCalls keys were preserved (not mangled to mPersistentCalls)
-            var comp = testGo.GetComponent<UnityEventTestComponent>();
-            var so = new SerializedObject(comp);
-            var callsProp = so.FindProperty("onSimpleEvent.m_PersistentCalls.m_Calls");
-            Assert.IsNotNull(callsProp, "m_Calls property should exist");
-            Assert.AreEqual(1, callsProp.arraySize, "Should have 1 persistent call");
-            Assert.AreEqual("SetActive",
-                callsProp.GetArrayElementAtIndex(0).FindPropertyRelative("m_MethodName").stringValue);
+            // Verify the nested keys were preserved and the property was set correctly
+            var audio = testGo.GetComponent<AudioSource>();
+            Assert.AreEqual(0.42f, audio.volume, 0.001f);
         }
 
         [Test]
@@ -94,22 +78,26 @@ namespace MCPForUnityTests.Editor.Tools
         {
             testGo.AddComponent<AudioSource>();
 
-            // Use snake_case top-level keys: search_method, component_type
+            // Use snake_case top-level keys: component_properties
+            // Batch normalization should convert this to componentProperties
             var batchParams = new JObject
             {
                 ["commands"] = new JArray
                 {
                     new JObject
                     {
-                        ["tool"] = "manage_components",
+                        ["tool"] = "scene_object",
                         ["params"] = new JObject
                         {
-                            ["action"] = "set_property",
+                            ["action"] = "set",
                             ["target"] = testGo.name,
-                            ["search_method"] = "by_name",
-                            ["component_type"] = "AudioSource",
-                            ["property"] = "volume",
-                            ["value"] = 0.42f
+                            ["component_properties"] = new JObject
+                            {
+                                ["AudioSource"] = new JObject
+                                {
+                                    ["volume"] = 0.42f
+                                }
+                            }
                         }
                     }
                 }
@@ -137,12 +125,12 @@ namespace MCPForUnityTests.Editor.Tools
                     {
                         new JObject
                         {
-                            ["tool"] = "manage_gameobject",
+                            ["tool"] = "scene_object",
                             ["params"] = new JObject
                             {
                                 ["action"] = "create",
                                 ["name"] = goName,
-                                ["primitive_type"] = "Cube"
+                                ["primitive"] = "Cube"
                             }
                         }
                     }

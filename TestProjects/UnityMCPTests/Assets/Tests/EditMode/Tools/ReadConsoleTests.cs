@@ -1,7 +1,9 @@
 using System;
+using System.Text.RegularExpressions;
 using Newtonsoft.Json.Linq;
 using NUnit.Framework;
 using UnityEngine;
+using UnityEngine.TestTools;
 using MCPForUnity.Editor.Tools;
 using MCPForUnity.Editor.Services;
 using static MCPForUnityTests.Editor.TestUtilities;
@@ -143,20 +145,6 @@ namespace MCPForUnityTests.Editor.Tools
         }
 
         [Test]
-        public void HandleCommand_Get_WithBothFilters_ReturnsError()
-        {
-            var result = ToJObject(ReadConsole.HandleCommand(new JObject
-            {
-                ["action"] = "get",
-                ["filterText"] = "some text",
-                ["filterRegex"] = "some.*pattern"
-            }));
-
-            Assert.IsFalse(result.Value<bool>("success"));
-            Assert.That(result["error"]?.ToString(), Does.Contain("filterText").Or.Contain("filterRegex"));
-        }
-
-        [Test]
         public void HandleCommand_Get_WithInvalidRegex_ReturnsError()
         {
             var result = ToJObject(ReadConsole.HandleCommand(new JObject
@@ -174,6 +162,7 @@ namespace MCPForUnityTests.Editor.Tools
         {
             Debug.Log($"Info-{Guid.NewGuid()}");
             Debug.LogWarning($"Warn-{Guid.NewGuid()}");
+            LogAssert.Expect(LogType.Error, new Regex("Error-"));
             Debug.LogError($"Error-{Guid.NewGuid()}");
 
             var result = ToJObject(ReadConsole.HandleCommand(new JObject

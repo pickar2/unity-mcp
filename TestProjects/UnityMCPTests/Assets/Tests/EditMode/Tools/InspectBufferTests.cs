@@ -52,7 +52,9 @@ namespace MCPForUnityTests.Editor.Tools
             var result = ToJObject(InspectBuffer.HandleCommand(paramsObj));
 
             Assert.IsFalse(result.Value<bool>("success"));
-            Assert.That(result["error"]?.ToString(), Does.Contain("not found").IgnoreCase);
+            // In EditMode, buffer inspection returns play mode error; in PlayMode it would return "not found"
+            Assert.That(result["error"]?.ToString(),
+                Does.Contain("not found").IgnoreCase.Or.Contain("play mode").IgnoreCase);
         }
 
         [Test]

@@ -391,7 +391,9 @@ namespace MCPForUnity.Editor.Tools.Prefabs
             var componentFilter = ParseComponentsParam(@params);
             if (componentFilter != null)
             {
-                data["components"] = SerializeComponentData(targetGo, componentFilter);
+                var p = new ToolParams(@params);
+                bool includeInternal = p.GetBool("includeInternal", false);
+                data["components"] = SerializeComponentData(targetGo, componentFilter, includeInternal);
                 if (!string.IsNullOrEmpty(target))
                     data["target"] = target;
             }
@@ -427,9 +429,11 @@ namespace MCPForUnity.Editor.Tools.Prefabs
             try
             {
                 var componentFilter = ParseComponentsParam(@params);
+                var p = new ToolParams(@params);
+                bool includeInternal = p.GetBool("includeInternal", false);
 
                 // Build complete hierarchy items (no pagination)
-                var allItems = BuildHierarchyItems(prefabContents.transform, sanitizedPath, componentFilter);
+                var allItems = BuildHierarchyItems(prefabContents.transform, sanitizedPath, componentFilter, includeInternal);
 
                 return new SuccessResponse(
                     $"Successfully retrieved prefab hierarchy. Found {allItems.Count} objects.",
@@ -1008,10 +1012,10 @@ namespace MCPForUnity.Editor.Tools.Prefabs
         /// <param name="root">The root transform of the prefab.</param>
         /// <param name="mainPrefabPath">Asset path of the main prefab.</param>
         /// <returns>List of hierarchy items with prefab information.</returns>
-        private static List<object> BuildHierarchyItems(Transform root, string mainPrefabPath, HashSet<string> componentFilter = null)
+        private static List<object> BuildHierarchyItems(Transform root, string mainPrefabPath, HashSet<string> componentFilter = null, bool includeInternal = false)
         {
             var items = new List<object>();
-            BuildHierarchyItemsRecursive(root, root, mainPrefabPath, "", items, componentFilter);
+            BuildHierarchyItemsRecursive(root, root, mainPrefabPath, "", items, componentFilter, includeInternal);
             return items;
         }
 
@@ -1023,7 +1027,7 @@ namespace MCPForUnity.Editor.Tools.Prefabs
         /// <param name="mainPrefabPath">Asset path of the main prefab.</param>
         /// <param name="parentPath">Parent path for building full hierarchy path.</param>
         /// <param name="items">List to accumulate hierarchy items.</param>
-        private static void BuildHierarchyItemsRecursive(Transform transform, Transform mainPrefabRoot, string mainPrefabPath, string parentPath, List<object> items, HashSet<string> componentFilter)
+        private static void BuildHierarchyItemsRecursive(Transform transform, Transform mainPrefabRoot, string mainPrefabPath, string parentPath, List<object> items, HashSet<string> componentFilter, bool includeInternal = false)
         {
             if (transform == null) return;
 
@@ -1064,7 +1068,7 @@ namespace MCPForUnity.Editor.Tools.Prefabs
 
             if (componentFilter != null)
             {
-                item["components"] = SerializeComponentData(go, componentFilter);
+                item["components"] = SerializeComponentData(go, componentFilter, includeInternal);
             }
 
             items.Add(item);
@@ -1072,7 +1076,7 @@ namespace MCPForUnity.Editor.Tools.Prefabs
             // Recursively process children
             foreach (Transform child in transform)
             {
-                BuildHierarchyItemsRecursive(child, mainPrefabRoot, mainPrefabPath, path, items, componentFilter);
+                BuildHierarchyItemsRecursive(child, mainPrefabRoot, mainPrefabPath, path, items, componentFilter, includeInternal);
             }
         }
 
@@ -1114,7 +1118,7 @@ namespace MCPForUnity.Editor.Tools.Prefabs
         /// Serializes component data for a GameObject, optionally filtered by type names.
         /// Empty filter = all components. Populated filter = only matching types.
         /// </summary>
-        private static List<object> SerializeComponentData(GameObject go, HashSet<string> filter)
+        private static List<object> SerializeComponentData(GameObject go, HashSet<string> filter, bool includeInternal = false)
         {
             var list = new List<object>();
             bool filterAll = filter.Count == 0;
@@ -1124,7 +1128,7 @@ namespace MCPForUnity.Editor.Tools.Prefabs
                 if (comp == null) continue;
                 string typeName = comp.GetType().Name;
                 if (filterAll || filter.Contains(typeName))
-                    list.Add(GameObjectSerializer.GetComponentData(comp));
+                    list.Add(GameObjectSerializer.GetComponentData(comp, includeInternal: includeInternal));
             }
             return list;
         }

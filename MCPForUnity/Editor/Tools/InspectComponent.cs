@@ -60,8 +60,8 @@ namespace MCPForUnity.Editor.Tools
                     if (!match) continue;
                 }
 
-                // Category filter (derived from namespace)
-                string derivedCategory = DeriveCategory(ns);
+                // Category filter (derived from namespace and type hierarchy)
+                string derivedCategory = DeriveCategory(ns, type);
                 if (!string.IsNullOrEmpty(category))
                 {
                     if (derivedCategory.IndexOf(category, StringComparison.OrdinalIgnoreCase) < 0)
@@ -290,7 +290,7 @@ namespace MCPForUnity.Editor.Tools
             return null;
         }
 
-        private static string DeriveCategory(string ns)
+        private static string DeriveCategory(string ns, Type type = null)
         {
             if (string.IsNullOrEmpty(ns)) return "Scripts";
 
@@ -306,6 +306,15 @@ namespace MCPForUnity.Editor.Tools
             if (ns.Contains("Cloth") || ns.Contains("ParticleSystem")) return "Effects";
             if (ns.Contains("TextMeshPro") || ns.Contains("TMPro")) return "TextMeshPro";
             if (ns.Contains("EventSystems")) return "Event System";
+
+            // Core physics types live in UnityEngine namespace directly, not sub-namespaces
+            if (type != null && ns == "UnityEngine")
+            {
+                if (typeof(Collider2D).IsAssignableFrom(type) || typeof(Rigidbody2D).IsAssignableFrom(type) || typeof(Joint2D).IsAssignableFrom(type))
+                    return "Physics 2D";
+                if (typeof(Collider).IsAssignableFrom(type) || typeof(Rigidbody).IsAssignableFrom(type) || typeof(Joint).IsAssignableFrom(type) || type == typeof(ConstantForce))
+                    return "Physics";
+            }
 
             if (ns.StartsWith("UnityEngine")) return "Engine";
             if (ns.StartsWith("UnityEditor")) return "Editor";

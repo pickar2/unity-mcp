@@ -27,5 +27,28 @@ namespace MCPForUnity.Editor.Tools
                 }
             }
         }
+
+        /// <summary>
+        /// If @params[paramName] is a stringified JSON token (object or array), parse it in-place.
+        /// Unlike CoerceJsonStringParameter which only handles objects, this handles arrays too.
+        /// Use for parameters that may be either a JArray or JObject (e.g., "components", "properties").
+        /// </summary>
+        internal static void CoerceJsonStringToken(JObject @params, string paramName)
+        {
+            if (@params == null || string.IsNullOrEmpty(paramName)) return;
+            var token = @params[paramName];
+            if (token != null && token.Type == JTokenType.String)
+            {
+                try
+                {
+                    var parsed = JToken.Parse(token.ToString());
+                    @params[paramName] = parsed;
+                }
+                catch (Newtonsoft.Json.JsonReaderException e)
+                {
+                    McpLog.Warn($"[MCP] Could not parse '{paramName}' JSON string: {e.Message}");
+                }
+            }
+        }
     }
 }

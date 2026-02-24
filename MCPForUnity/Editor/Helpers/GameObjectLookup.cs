@@ -339,7 +339,8 @@ namespace MCPForUnity.Editor.Helpers
                 return false;
 
             var goPath = GetGameObjectPath(go);
-            return goPath == path || goPath.EndsWith("/" + path);
+            var normalizedPath = path.StartsWith("/") ? path.Substring(1) : path;
+            return goPath == normalizedPath || goPath.EndsWith("/" + normalizedPath);
         }
 
         /// <summary>

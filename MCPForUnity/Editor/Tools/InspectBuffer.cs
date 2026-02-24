@@ -30,9 +30,6 @@ namespace MCPForUnity.Editor.Tools
             if (@params == null)
                 return new ErrorResponse("Parameters cannot be null.");
 
-            if (!EditorApplication.isPlaying)
-                return new ErrorResponse("Cannot inspect buffers: Not in play mode. GPU buffers are only available at runtime.");
-
             var p = new ToolParams(@params);
 
             var targetResult = p.GetRequired("target");
@@ -47,11 +44,15 @@ namespace MCPForUnity.Editor.Tools
 
             try
             {
-                // Discovery mode
+                // Discovery mode - works in edit mode (returns empty if no runtime buffers)
                 if (listOnly || target.Contains("*"))
                 {
                     return DiscoverBuffers(target);
                 }
+
+                // Data inspection requires play mode
+                if (!EditorApplication.isPlaying)
+                    return new ErrorResponse("Cannot inspect buffers: Not in play mode. GPU buffers are only available at runtime.");
 
                 // Inspection mode
                 return InspectBufferData(target, start, count, format);

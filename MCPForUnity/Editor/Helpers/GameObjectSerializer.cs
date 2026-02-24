@@ -16,35 +16,68 @@ namespace MCPForUnity.Editor.Helpers
     /// </summary> 
     public static class GameObjectSerializer
     {
-        // Properties considered engine-internal — skipped when includeInternal=false.
-        // Keeps component output concise for LLM consumption.
+        // --- Internal property filtering (includeInternal=false) ---
+        //
+        // Four layers filter noise from built-in component output for LLM consumption:
+        //   1. [Obsolete] attribute   — auto-skips deprecated properties (legacy shortcuts, etc.)
+        //   2. Read-only (no setter)  — auto-skips computed/derived values (bounds, velocity, etc.)
+        //   3. Base class declaring   — auto-skips inherited Object/Component noise (tag, name, etc.)
+        //   4. Curated skip list      — manually maintained for writable-but-internal properties
+        //
+        // Layers 1-3 only apply to Unity built-in types (never user MonoBehaviours).
+        // Layer 4 is the HashSet below.
+
+        // Base types whose declared properties are infrastructure noise, not component-specific.
+        // Properties from these types (tag, name, gameObject, hideFlags) are already on the outer object.
+        // Behaviour is intentionally excluded so 'enabled' still comes through.
+        private static readonly HashSet<Type> NoiseBaseTypes = new()
+        {
+            typeof(UnityEngine.Object),
+            typeof(Component),
+        };
+
+        // Writable, non-deprecated engine properties too low-level for typical LLM use.
+        // Read-only noise (bounds, isVisible, etc.) is handled automatically by the CanWrite check.
+        // Deprecated properties (rigidbody, camera shortcuts) are handled by the Obsolete check.
+        // Base class noise (tag, name, gameObject, hideFlags) is handled by the DeclaringType check.
         private static readonly HashSet<string> InternalPropertyNames = new(StringComparer.Ordinal)
         {
-            // Renderer: lightmapping, probes, shadows, raytracing, batching, LOD
+            // Renderer: lightmapping
             "lightmapScaleOffset", "realtimeLightmapScaleOffset",
             "lightmapTilingOffset", "realtimeLightmapTilingOffset",
             "lightmapIndex", "realtimeLightmapIndex",
-            "rayTracingMode", "rayTracingAccelerationStructureBuildFlags",
-            "rayTracingAccelerationStructureBuildFlagsOverride",
+            "scaleInLightmap", "stitchLightmapSeams", "globalIlluminationMeshLod",
+            // Renderer: probes
             "lightProbeUsage", "reflectionProbeUsage", "lightProbeProxyVolumeOverride",
             "lightProbeAnchor", "probeAnchor",
+            // Renderer: raytracing
+            "rayTracingMode", "rayTracingAccelerationStructureBuildFlags",
+            "rayTracingAccelerationStructureBuildFlagsOverride",
+            // Renderer: shadows/motion (castShadows, receiveShadows, shadowCastingMode kept — useful for game dev)
             "motionVectorGenerationMode", "staticShadowCaster",
             "motionVectors", "useLightProbes",
-            "castShadows", "receiveShadows", "shadowCastingMode",
-            "isLOD0", "forceMeshLod", "meshLodSelectionBias",
-            "isPartOfStaticBatch", "allowOcclusionWhenDynamic",
+            // Renderer: batching, LOD, misc
+            "forceMeshLod", "meshLodSelectionBias", "allowOcclusionWhenDynamic",
             "rendererPriority", "renderingLayerMask",
-            "localBounds", "bounds",
-            "materials", "sharedMaterials", "material", "sharedMaterial",
-            "sortingLayerID", "forceRenderingOff",
-            "isVisible", "LODGroup",
+            "forceRenderingOff", "sortingLayerID",
+            // Renderer: GI/vertex streams
+            "enlightenVertexStream", "additionalVertexStreams", "subMeshStartIndex", "receiveGI",
+            // Renderer: bounds (writable in Unity 6+ but computed noise for LLMs)
+            "bounds", "localBounds",
             // Collider/Rigidbody layer masks
             "excludeLayers", "includeLayers", "forceSendLayers", "forceReceiveLayers",
             "contactCaptureLayers", "callbackLayers",
-            // Deprecated physics aliases (Rigidbody/Rigidbody2D)
+            // Physics: solver internals
+            "solverIterations", "solverVelocityIterations", "sleepThreshold",
+            "maxDepenetrationVelocity", "maxAngularVelocity", "maxLinearVelocity",
+            "contactOffset", "layerOverridePriority",
+            // Physics: deprecated aliases
             "drag", "angularDrag",
-            // Component base class noise
-            "gameObject", "hideFlags",
+            // Physics: advanced inertia
+            "automaticCenterOfMass", "automaticInertiaTensor",
+            "inertiaTensorRotation", "inertiaTensor",
+            // Collider: advanced
+            "hasModifiableContacts", "providesContacts",
         };
 
         // --- Data Serialization ---
@@ -385,6 +418,8 @@ namespace MCPForUnity.Editor.Helpers
                     {
                         // Basic filtering (readable, not indexer, not transform which is handled elsewhere)
                         if (!propInfo.CanRead || propInfo.GetIndexParameters().Length > 0 || propInfo.Name == "transform") continue;
+                        // Layer 1: Skip deprecated properties (replaces hardcoded obsolete shortcut list)
+                        if (propInfo.GetCustomAttribute<ObsoleteAttribute>() != null) continue;
                         // Add if not already added (handles overrides - keep the most derived version)
                         if (!propertiesToCache.Any(p => p.Name == propInfo.Name))
                         {
@@ -444,66 +479,41 @@ namespace MCPForUnity.Editor.Helpers
             foreach (var propInfo in cachedData.SerializableProperties)
             {
                 string propName = propInfo.Name;
-
-                // --- Skip known obsolete/problematic Component shortcut properties ---
                 bool skipProperty = false;
-                if (propName == "rigidbody" || propName == "rigidbody2D" || propName == "camera" ||
-                    propName == "light" || propName == "animation" || propName == "constantForce" ||
-                    propName == "renderer" || propName == "audio" || propName == "networkView" ||
-                    propName == "collider" || propName == "collider2D" || propName == "hingeJoint" ||
-                    propName == "particleSystem" ||
-                    // Also skip potentially problematic Matrix properties prone to cycles/errors
-                    propName == "worldToLocalMatrix" || propName == "localToWorldMatrix")
-                {
-                    // McpLog.Info($"[GetComponentData] Explicitly skipping generic property: {propName}"); // Optional log
-                    skipProperty = true;
-                }
-                // --- End Skip Generic Properties ---
 
-                // --- Skip specific potentially problematic Camera properties ---
+                // --- Safety skips: properties that crash serialization regardless of filtering ---
                 if (componentType == typeof(Camera) &&
-                    (propName == "pixelRect" ||
-                     propName == "rect" ||
-                     propName == "cullingMatrix" ||
-                     propName == "useOcclusionCulling" ||
-                     propName == "worldToCameraMatrix" ||
-                     propName == "projectionMatrix" ||
-                     propName == "nonJitteredProjectionMatrix" ||
-                     propName == "previousViewProjectionMatrix" ||
+                    (propName == "pixelRect" || propName == "rect" ||
+                     propName == "cullingMatrix" || propName == "useOcclusionCulling" ||
+                     propName == "worldToCameraMatrix" || propName == "projectionMatrix" ||
+                     propName == "nonJitteredProjectionMatrix" || propName == "previousViewProjectionMatrix" ||
                      propName == "cameraToWorldMatrix"))
-                {
-                    // McpLog.Info($"[GetComponentData] Explicitly skipping Camera property: {propName}");
                     skipProperty = true;
-                }
-                // --- End Skip Camera Properties ---
 
-                // --- Skip specific potentially problematic Transform properties ---
                 if (componentType == typeof(Transform) &&
-                    (propName == "lossyScale" ||
-                     propName == "rotation" ||
-                     propName == "worldToLocalMatrix" ||
-                     propName == "localToWorldMatrix"))
+                    (propName == "lossyScale" || propName == "rotation" ||
+                     propName == "worldToLocalMatrix" || propName == "localToWorldMatrix"))
+                    skipProperty = true;
+
+                if (typeof(Collider).IsAssignableFrom(componentType) && propName == "GeometryHolder")
+                    skipProperty = true;
+
+                // --- Internal filtering layers (only for built-in types when includeInternal=false) ---
+                if (shouldFilterInternal)
                 {
-                    skipProperty = true;
+                    // Layer 2: Skip read-only computed/derived properties (bounds, velocity, isVisible, etc.)
+                    if (!propInfo.CanWrite)
+                        skipProperty = true;
+                    // Layer 3: Skip base class noise (tag, name from Object/Component — already on outer object)
+                    else if (NoiseBaseTypes.Contains(propInfo.DeclaringType))
+                        skipProperty = true;
+                    // Layer 4: Curated skip list for writable-but-internal properties
+                    else if (InternalPropertyNames.Contains(propName))
+                        skipProperty = true;
                 }
-                // --- End Skip Transform Properties ---
 
-                // --- Skip Collider properties that cause native crashes via PhysX ---
-                if (typeof(Collider).IsAssignableFrom(componentType) &&
-                    propName == "GeometryHolder")
-                {
-                    skipProperty = true;
-                }
-                // --- End Skip Collider Properties ---
-
-                if (shouldFilterInternal && InternalPropertyNames.Contains(propName))
-                    skipProperty = true;
-
-                // Skip if flagged
                 if (skipProperty)
-                {
                     continue;
-                }
 
                 try
                 {
@@ -555,7 +565,9 @@ namespace MCPForUnity.Editor.Helpers
             // Use cached fields
             foreach (var fieldInfo in cachedData.SerializableFields)
             {
-                if (shouldFilterInternal && InternalPropertyNames.Contains(fieldInfo.Name))
+                if (shouldFilterInternal &&
+                    (InternalPropertyNames.Contains(fieldInfo.Name) ||
+                     NoiseBaseTypes.Contains(fieldInfo.DeclaringType)))
                     continue;
 
                 try
@@ -722,7 +734,8 @@ namespace MCPForUnity.Editor.Helpers
             if (type == null) return false;
             string ns = type.Namespace;
             if (string.IsNullOrEmpty(ns)) return false;
-            return ns.StartsWith("UnityEngine.") || ns.StartsWith("UnityEditor.");
+            return ns == "UnityEngine" || ns == "UnityEditor"
+                || ns.StartsWith("UnityEngine.") || ns.StartsWith("UnityEditor.");
         }
     }
 }

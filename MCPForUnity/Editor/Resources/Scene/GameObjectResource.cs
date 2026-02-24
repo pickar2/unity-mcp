@@ -145,6 +145,7 @@ namespace MCPForUnity.Editor.Resources.Scene
             int pageSize = ParamCoercion.CoerceInt(@params["pageSize"] ?? @params["page_size"], 25);
             int cursor = ParamCoercion.CoerceInt(@params["cursor"], 0);
             bool includeProperties = ParamCoercion.CoerceBool(@params["includeProperties"] ?? @params["include_properties"], true);
+            bool includeInternal = ParamCoercion.CoerceBool(@params["includeInternal"] ?? @params["include_internal"], false);
 
             pageSize = Mathf.Clamp(pageSize, 1, 100);
 
@@ -166,7 +167,7 @@ namespace MCPForUnity.Editor.Resources.Scene
                 {
                     if (includeProperties)
                     {
-                        componentData.Add(GameObjectSerializer.GetComponentData(component));
+                        componentData.Add(GameObjectSerializer.GetComponentData(component, includeInternal: includeInternal));
                     }
                     else
                     {
@@ -263,6 +264,8 @@ namespace MCPForUnity.Editor.Resources.Scene
                     return new ErrorResponse($"Component '{componentName}' not found on GameObject '{go.name}'.");
                 }
 
+                bool includeInternal = ParamCoercion.CoerceBool(@params["includeInternal"] ?? @params["include_internal"], false);
+
                 return new
                 {
                     success = true,
@@ -270,7 +273,7 @@ namespace MCPForUnity.Editor.Resources.Scene
                     {
                         gameObjectID = instanceID,
                         gameObjectName = go.name,
-                        component = GameObjectSerializer.GetComponentData(targetComponent)
+                        component = GameObjectSerializer.GetComponentData(targetComponent, includeInternal: includeInternal)
                     }
                 };
             }
