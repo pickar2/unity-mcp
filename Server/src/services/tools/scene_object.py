@@ -20,7 +20,7 @@ from mcp.types import ToolAnnotations
 
 from services.registry import mcp_for_unity_tool
 from services.tools import get_unity_instance_from_context
-from services.tools.utils import coerce_int, coerce_bool
+from services.tools.utils import coerce_int, coerce_bool, parse_json_payload
 from transport.unity_transport import send_with_unity_instance
 from transport.legacy.unity_connection import async_send_command_with_retry
 
@@ -103,12 +103,13 @@ async def scene_object(
         'For create: list of components to add, each a string or {"typeName": "Rigidbody", "properties": {"mass": 10}}.',
     ] = None,
     add_components: Annotated[
-        list[str | dict] | None,
+        list[str | dict] | str | None,
         "List of components to add (set action). Each element can be a string type name "
-        'or {"typeName": "Rigidbody", "properties": {"mass": 10}} to add with initial properties.',
+        'or {"typeName": "Rigidbody", "properties": {"mass": 10}}. Also accepts JSON string.',
     ] = None,
     remove_components: Annotated[
-        list[str] | None, "List of component types to remove from object (set action)."
+        list[str] | str | None,
+        "List of component types to remove from object (set action). Also accepts JSON string.",
     ] = None,
     component_properties: Annotated[
         dict | None,
@@ -230,9 +231,9 @@ async def scene_object(
     if cursor is not None:
         params["cursor"] = coerce_int(cursor)
     if add_components is not None:
-        params["add_components"] = add_components
+        params["add_components"] = parse_json_payload(add_components)
     if remove_components is not None:
-        params["remove_components"] = remove_components
+        params["remove_components"] = parse_json_payload(remove_components)
     if component_properties is not None:
         params["component_properties"] = component_properties
 

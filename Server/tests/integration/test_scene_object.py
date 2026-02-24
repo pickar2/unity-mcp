@@ -665,6 +665,64 @@ async def test_scene_object_set_remove_components(monkeypatch):
 
 
 @pytest.mark.asyncio
+async def test_scene_object_set_remove_components_as_json_string(monkeypatch):
+    """Test set action with remove_components passed as JSON string."""
+    tools = setup_scene_object_tools()
+    scene_object = tools["scene_object"]
+
+    captured = {}
+
+    async def fake_send(_send_fn, _unity_instance, _command_type, params, **_kwargs):
+        captured["params"] = params
+        return {
+            "success": True,
+            "data": {"path": "/Player", "changes": ["remove_component:BoxCollider"]},
+        }
+
+    import services.tools.scene_object as scene_object_mod
+
+    monkeypatch.setattr(scene_object_mod, "send_with_unity_instance", fake_send)
+
+    resp = await scene_object(
+        ctx=DummyContext(),
+        action="set",
+        target="Player",
+        remove_components='["BoxCollider"]',
+    )
+    assert resp["success"] is True
+    assert captured["params"]["remove_components"] == ["BoxCollider"]
+
+
+@pytest.mark.asyncio
+async def test_scene_object_set_add_components_as_json_string(monkeypatch):
+    """Test set action with add_components passed as JSON string."""
+    tools = setup_scene_object_tools()
+    scene_object = tools["scene_object"]
+
+    captured = {}
+
+    async def fake_send(_send_fn, _unity_instance, _command_type, params, **_kwargs):
+        captured["params"] = params
+        return {
+            "success": True,
+            "data": {"path": "/Player", "changes": ["add_component:Rigidbody"]},
+        }
+
+    import services.tools.scene_object as scene_object_mod
+
+    monkeypatch.setattr(scene_object_mod, "send_with_unity_instance", fake_send)
+
+    resp = await scene_object(
+        ctx=DummyContext(),
+        action="set",
+        target="Player",
+        add_components='["Rigidbody"]',
+    )
+    assert resp["success"] is True
+    assert captured["params"]["add_components"] == ["Rigidbody"]
+
+
+@pytest.mark.asyncio
 async def test_scene_object_set_component_properties_dict(monkeypatch):
     """Test set action with component_properties dict for multiple components."""
     tools = setup_scene_object_tools()
