@@ -31,7 +31,7 @@ Actions:
 - modify: Apply serialized property patches to an existing SO asset.
 
 Patch format: [{"propertyPath": "fieldName", "value": ...}]
-AnimationCurve: {"keys": [{"time": 0, "value": 0, "inSlope": 0, "outSlope": 1}, ...]}
+AnimationCurve: {"keys": [{"time": 0, "value": 0, "inTangent": 0, "outTangent": 1}, ...]}
 Object references: {"propertyPath": "myField", "ref": {"path": "Assets/..."}} or {"ref": {"guid": "..."}}
 
 Examples:

@@ -20,7 +20,10 @@ namespace MCPForUnity.Editor.Tools.Vfx
                     time = k.time,
                     value = k.value,
                     inTangent = k.inTangent,
-                    outTangent = k.outTangent
+                    outTangent = k.outTangent,
+                    weightedMode = (int)k.weightedMode,
+                    inWeight = k.inWeight,
+                    outWeight = k.outWeight
                 }).ToArray()
             };
         }
@@ -54,7 +57,10 @@ namespace MCPForUnity.Editor.Tools.Vfx
                             time = k.time,
                             value = k.value,
                             inTangent = k.inTangent,
-                            outTangent = k.outTangent
+                            outTangent = k.outTangent,
+                            weightedMode = (int)k.weightedMode,
+                            inWeight = k.inWeight,
+                            outWeight = k.outWeight
                         }).ToArray()
                     };
 
@@ -68,7 +74,10 @@ namespace MCPForUnity.Editor.Tools.Vfx
                             time = k.time,
                             value = k.value,
                             inTangent = k.inTangent,
-                            outTangent = k.outTangent
+                            outTangent = k.outTangent,
+                            weightedMode = (int)k.weightedMode,
+                            inWeight = k.inWeight,
+                            outWeight = k.outWeight
                         }).ToArray(),
                         originalMode = "two_curves",
                         curveMin = SerializeAnimationCurve(curve.curveMin),

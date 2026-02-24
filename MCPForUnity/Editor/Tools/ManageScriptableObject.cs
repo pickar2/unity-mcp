@@ -1391,8 +1391,8 @@ namespace MCPForUnity.Editor.Tools
         /// <list type="bullet">
         ///   <item><c>time</c> (float): Keyframe time position. <b>Default: 0</b></item>
         ///   <item><c>value</c> (float): Keyframe value. <b>Default: 0</b></item>
-        ///   <item><c>inSlope</c> or <c>inTangent</c> (float): Incoming tangent slope. <b>Default: 0</b></item>
-        ///   <item><c>outSlope</c> or <c>outTangent</c> (float): Outgoing tangent slope. <b>Default: 0</b></item>
+        ///   <item><c>inTangent</c> or <c>inSlope</c> (float): Incoming tangent slope. <b>Default: 0</b></item>
+        ///   <item><c>outTangent</c> or <c>outSlope</c> (float): Outgoing tangent slope. <b>Default: 0</b></item>
         ///   <item><c>weightedMode</c> (int): Weighted mode enum (0=None, 1=In, 2=Out, 3=Both). <b>Default: 0 (None)</b></item>
         ///   <item><c>inWeight</c> (float): Incoming tangent weight. <b>Default: 0</b></item>
         ///   <item><c>outWeight</c> (float): Outgoing tangent weight. <b>Default: 0</b></item>
@@ -1436,7 +1436,7 @@ namespace MCPForUnity.Editor.Tools
             else
             {
                 message = "AnimationCurve requires object with 'keys' or array of keyframes. " +
-                          "Expected: { \"keys\": [ { \"time\": 0, \"value\": 0, \"inSlope\": 0, \"outSlope\": 0 }, ... ] }";
+                          "Expected: { \"keys\": [ { \"time\": 0, \"value\": 0, \"inTangent\": 0, \"outTangent\": 0 }, ... ] }";
                 return false;
             }
 
@@ -1453,10 +1453,10 @@ namespace MCPForUnity.Editor.Tools
 
                     float time = keyObj["time"]?.Value<float>() ?? 0f;
                     float value = keyObj["value"]?.Value<float>() ?? 0f;
-                    float inSlope = keyObj["inSlope"]?.Value<float>() ?? keyObj["inTangent"]?.Value<float>() ?? 0f;
-                    float outSlope = keyObj["outSlope"]?.Value<float>() ?? keyObj["outTangent"]?.Value<float>() ?? 0f;
+                    float inTangent = keyObj["inTangent"]?.Value<float>() ?? keyObj["inSlope"]?.Value<float>() ?? 0f;
+                    float outTangent = keyObj["outTangent"]?.Value<float>() ?? keyObj["outSlope"]?.Value<float>() ?? 0f;
 
-                    var keyframe = new Keyframe(time, value, inSlope, outSlope);
+                    var keyframe = new Keyframe(time, value, inTangent, outTangent);
 
                     // Optional: weighted tangent mode (Unity 2018.1+)
                     if (keyObj["weightedMode"] != null)

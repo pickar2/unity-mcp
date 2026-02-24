@@ -448,18 +448,23 @@ namespace MCPForUnity.Editor.Tools.Animation
                     else if (item is JObject obj)
                     {
                         // Full form: {"time":0, "value":0, "inTangent":0, "outTangent":0}
+                        // Also accepts inSlope/outSlope as aliases
                         float time = obj["time"]?.ToObject<float>() ?? 0f;
                         float value = obj["value"]?.ToObject<float>() ?? 0f;
 
                         var kf = new Keyframe(time, value);
-                        if (obj["inTangent"] != null)
-                            kf.inTangent = obj["inTangent"].ToObject<float>();
-                        if (obj["outTangent"] != null)
-                            kf.outTangent = obj["outTangent"].ToObject<float>();
+                        var inT = obj["inTangent"] ?? obj["inSlope"];
+                        if (inT != null)
+                            kf.inTangent = inT.ToObject<float>();
+                        var outT = obj["outTangent"] ?? obj["outSlope"];
+                        if (outT != null)
+                            kf.outTangent = outT.ToObject<float>();
                         if (obj["inWeight"] != null)
                             kf.inWeight = obj["inWeight"].ToObject<float>();
                         if (obj["outWeight"] != null)
                             kf.outWeight = obj["outWeight"].ToObject<float>();
+                        if (obj["weightedMode"] != null)
+                            kf.weightedMode = (WeightedMode)obj["weightedMode"].ToObject<int>();
 
                         keyframes.Add(kf);
                     }
