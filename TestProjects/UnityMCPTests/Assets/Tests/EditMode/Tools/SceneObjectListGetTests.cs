@@ -813,7 +813,6 @@ namespace MCPForUnityTests.Editor.Tools
             Assert.IsTrue(props.ContainsKey("bounds"), "Should include 'bounds' with includeInternal=true");
             Object.DestroyImmediate(cube);
         }
-        }
 
         #endregion
     }
