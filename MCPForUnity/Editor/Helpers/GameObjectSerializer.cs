@@ -20,24 +20,31 @@ namespace MCPForUnity.Editor.Helpers
         // Keeps component output concise for LLM consumption.
         private static readonly HashSet<string> InternalPropertyNames = new(StringComparer.Ordinal)
         {
-            // Renderer: lighting, probes, raytracing, batching, LOD
+            // Renderer: lightmapping, probes, shadows, raytracing, batching, LOD
             "lightmapScaleOffset", "realtimeLightmapScaleOffset",
+            "lightmapTilingOffset", "realtimeLightmapTilingOffset",
             "lightmapIndex", "realtimeLightmapIndex",
             "rayTracingMode", "rayTracingAccelerationStructureBuildFlags",
             "rayTracingAccelerationStructureBuildFlagsOverride",
             "lightProbeUsage", "reflectionProbeUsage", "lightProbeProxyVolumeOverride",
+            "lightProbeAnchor", "probeAnchor",
             "motionVectorGenerationMode", "staticShadowCaster",
+            "motionVectors", "useLightProbes",
+            "castShadows", "receiveShadows", "shadowCastingMode",
             "isLOD0", "forceMeshLod", "meshLodSelectionBias",
             "isPartOfStaticBatch", "allowOcclusionWhenDynamic",
             "rendererPriority", "renderingLayerMask",
-            "localBounds",
-            "materials", "sharedMaterials",
-            "probeAnchor", "sortingLayerID",
+            "localBounds", "bounds",
+            "materials", "sharedMaterials", "material", "sharedMaterial",
+            "sortingLayerID", "forceRenderingOff",
+            "isVisible", "LODGroup",
             // Collider/Rigidbody layer masks
             "excludeLayers", "includeLayers", "forceSendLayers", "forceReceiveLayers",
             "contactCaptureLayers", "callbackLayers",
             // Deprecated physics aliases (Rigidbody/Rigidbody2D)
             "drag", "angularDrag",
+            // Component base class noise
+            "gameObject", "hideFlags",
         };
 
         // --- Data Serialization ---
@@ -193,6 +200,9 @@ namespace MCPForUnity.Editor.Helpers
 
             if (c == null) return null;
             Type componentType = c.GetType();
+
+            // Only apply internal filtering to Unity built-in types, never to user MonoBehaviours
+            bool shouldFilterInternal = !includeInternal && IsUnityBuiltInType(componentType);
 
             // --- Special handling for Transform to avoid reflection crashes and problematic properties --- 
             if (componentType == typeof(Transform))
@@ -486,7 +496,7 @@ namespace MCPForUnity.Editor.Helpers
                 }
                 // --- End Skip Collider Properties ---
 
-                if (!includeInternal && InternalPropertyNames.Contains(propName))
+                if (shouldFilterInternal && InternalPropertyNames.Contains(propName))
                     skipProperty = true;
 
                 // Skip if flagged
@@ -545,7 +555,7 @@ namespace MCPForUnity.Editor.Helpers
             // Use cached fields
             foreach (var fieldInfo in cachedData.SerializableFields)
             {
-                if (!includeInternal && InternalPropertyNames.Contains(fieldInfo.Name))
+                if (shouldFilterInternal && InternalPropertyNames.Contains(fieldInfo.Name))
                     continue;
 
                 try
@@ -705,6 +715,14 @@ namespace MCPForUnity.Editor.Helpers
                 McpLog.Warn($"[GameObjectSerializer] Unexpected error serializing value of type {type.FullName}: {e}. Skipping property/field.");
                 return null; // Indicate serialization failure
             }
+        }
+
+        private static bool IsUnityBuiltInType(Type type)
+        {
+            if (type == null) return false;
+            string ns = type.Namespace;
+            if (string.IsNullOrEmpty(ns)) return false;
+            return ns.StartsWith("UnityEngine.") || ns.StartsWith("UnityEditor.");
         }
     }
 }

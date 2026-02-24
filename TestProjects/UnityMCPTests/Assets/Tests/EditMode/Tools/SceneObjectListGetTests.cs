@@ -732,7 +732,7 @@ namespace MCPForUnityTests.Editor.Tools
             Assert.IsNotNull(components);
             var props = components[0]["properties"] as JObject;
             Assert.IsNotNull(props);
-            Assert.ContainsKey("mass", props, "Should include 'mass' property");
+            Assert.IsTrue(props.ContainsKey("mass"), "Should include 'mass' property");
             Assert.IsFalse(props.ContainsKey("useGravity"), "Should NOT include 'useGravity' — not in filter");
         }
 
@@ -756,8 +756,8 @@ namespace MCPForUnityTests.Editor.Tools
             Assert.IsTrue(result.Value<bool>("success"), result.ToString());
             var props = (result["data"]?["components"] as JArray)?[0]?["properties"] as JObject;
             Assert.IsNotNull(props);
-            Assert.ContainsKey("mass", props);
-            Assert.ContainsKey("isKinematic", props);
+            Assert.IsTrue(props.ContainsKey("mass"), "Should include 'mass'");
+            Assert.IsTrue(props.ContainsKey("isKinematic"), "Should include 'isKinematic'");
             Assert.IsFalse(props.ContainsKey("useGravity"), "Should not include unfiltered property");
         }
 

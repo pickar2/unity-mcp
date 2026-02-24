@@ -196,28 +196,28 @@ namespace MCPForUnityTests.Editor.Tools
 
             var p = new JObject
             {
-                ["action"] = "set_property",
+                ["action"] = "set",
                 ["target"] = testGo.name,
-                ["search_method"] = "by_name",
-                ["component_type"] = "UnityEventTestComponent",
-                ["property"] = "onSimpleEvent",
-                ["value"] = JObject.Parse(@"{
-                    ""m_PersistentCalls"": {
-                        ""m_Calls"": [
-                            {
-                                ""m_Target"": { ""instanceID"": " + targetId + @" },
-                                ""m_TargetAssemblyTypeName"": ""UnityEngine.GameObject, UnityEngine"",
-                                ""m_MethodName"": ""SetActive"",
-                                ""m_Mode"": 6,
-                                ""m_Arguments"": { ""m_BoolArgument"": true },
-                                ""m_CallState"": 2
-                            }
-                        ]
+                ["component"] = "UnityEventTestComponent",
+                ["properties"] = JObject.Parse(@"{
+                    ""onSimpleEvent"": {
+                        ""m_PersistentCalls"": {
+                            ""m_Calls"": [
+                                {
+                                    ""m_Target"": { ""instanceID"": " + targetId + @" },
+                                    ""m_TargetAssemblyTypeName"": ""UnityEngine.GameObject, UnityEngine"",
+                                    ""m_MethodName"": ""SetActive"",
+                                    ""m_Mode"": 6,
+                                    ""m_Arguments"": { ""m_BoolArgument"": true },
+                                    ""m_CallState"": 2
+                                }
+                            ]
+                        }
                     }
                 }")
             };
 
-            var result = ManageComponents.HandleCommand(p);
+            var result = SceneObject.HandleCommand(p);
             var resultObj = result as JObject ?? JObject.FromObject(result);
 
             Assert.IsTrue(resultObj.Value<bool>("success"), $"HandleCommand should succeed: {resultObj}");
