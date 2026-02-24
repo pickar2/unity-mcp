@@ -102,6 +102,10 @@
       "description": "Run Unity Test Framework tests"
     },
     {
+      "name": "invoke_method",
+      "description": "Invoke methods on Unity components or static types via reflection"
+    },
+    {
       "name": "scene_object",
       "description": "Interact with GameObjects in the Unity scene - list, get, set, create, delete, duplicate, move"
     },

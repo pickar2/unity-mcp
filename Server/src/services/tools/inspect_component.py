@@ -24,7 +24,8 @@ Examples:
   inspect_component(action="list", search="Light")
   inspect_component(action="list", category="Physics 2D")
   inspect_component(action="schema", type_name="Light2D")
-  inspect_component(action="schema", type_name="Rigidbody", include_enum_values=True)""",
+  inspect_component(action="schema", type_name="Rigidbody", include_enum_values=True)
+  inspect_component(action="schema", type_name="PlayerHealth", include_methods=True)""",
     annotations=ToolAnnotations(
         title="Inspect Component",
         readOnlyHint=True,
@@ -73,6 +74,11 @@ async def inspect_component(
         "Include default values in schema (default true).",
     ]
     | None = None,
+    include_methods: Annotated[
+        bool | str,
+        "Include public method signatures in schema (default false). Useful for invoke_method discovery.",
+    ]
+    | None = None,
 ) -> dict[str, Any]:
     unity_instance = get_unity_instance_from_context(ctx)
 
@@ -101,6 +107,10 @@ async def inspect_component(
     include_defs = coerce_bool(include_defaults, default=None)
     if include_defs is not None:
         params["includeDefaults"] = include_defs
+
+    include_meths = coerce_bool(include_methods, default=None)
+    if include_meths is not None:
+        params["includeMethods"] = include_meths
 
     return await send_with_unity_instance(
         async_send_command_with_retry,

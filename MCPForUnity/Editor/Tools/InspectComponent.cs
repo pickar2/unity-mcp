@@ -156,7 +156,9 @@ namespace MCPForUnity.Editor.Tools
                 if (menuAttr != null && !string.IsNullOrEmpty(menuAttr.componentMenu))
                     menuPath = menuAttr.componentMenu;
 
-                return new SuccessResponse($"Schema for {componentType.Name}.", new Dictionary<string, object>
+                bool includeMethods = p.GetBool("includeMethods", false);
+
+                var result = new Dictionary<string, object>
                 {
                     ["typeName"] = componentType.Name,
                     ["fullName"] = componentType.FullName,
@@ -164,7 +166,14 @@ namespace MCPForUnity.Editor.Tools
                     ["menuPath"] = menuPath,
                     ["propertyCount"] = properties.Count,
                     ["properties"] = properties
-                });
+                };
+
+                if (includeMethods)
+                {
+                    result["methods"] = GetPublicMethods(componentType);
+                }
+
+                return new SuccessResponse($"Schema for {componentType.Name}.", result);
             }
             catch (Exception ex)
             {
@@ -302,6 +311,39 @@ namespace MCPForUnity.Editor.Tools
             if (ns.StartsWith("UnityEditor")) return "Editor";
 
             return "Scripts";
+        }
+
+        private static readonly HashSet<string> SkipMethodNames = new(StringComparer.Ordinal)
+        {
+            "Equals", "GetHashCode", "GetType", "ToString", "GetInstanceID",
+            "GetComponent", "GetComponents", "GetComponentInChildren", "GetComponentsInChildren",
+            "GetComponentInParent", "GetComponentsInParent", "TryGetComponent",
+            "CompareTag", "SendMessage", "SendMessageUpwards", "BroadcastMessage",
+        };
+
+        private static List<object> GetPublicMethods(Type componentType)
+        {
+            var methods = componentType.GetMethods(BindingFlags.Public | BindingFlags.Instance | BindingFlags.DeclaredOnly)
+                .Where(m => !m.IsSpecialName && !SkipMethodNames.Contains(m.Name))
+                .OrderBy(m => m.Name)
+                .Select(m =>
+                {
+                    var ps = m.GetParameters();
+                    return new Dictionary<string, object>
+                    {
+                        ["name"] = m.Name,
+                        ["returnType"] = m.ReturnType == typeof(void) ? "void" : m.ReturnType.Name,
+                        ["parameters"] = ps.Select(param => new Dictionary<string, object>
+                        {
+                            ["name"] = param.Name,
+                            ["type"] = param.ParameterType.Name,
+                            ["optional"] = param.HasDefaultValue,
+                        }).ToList(),
+                    };
+                })
+                .ToList();
+
+            return methods;
         }
     }
 }

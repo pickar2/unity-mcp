@@ -572,7 +572,7 @@ namespace MCPForUnity.Editor.Helpers
         }
 
         // Helper to convert JToken back to basic object structure
-        private static object ConvertJTokenToPlainObject(JToken token)
+        public static object ConvertJTokenToPlainObject(JToken token)
         {
             if (token == null) return null;
 
@@ -646,7 +646,7 @@ namespace MCPForUnity.Editor.Helpers
             ReferenceLoopHandling = ReferenceLoopHandling.Ignore,
             // ContractResolver = new DefaultContractResolver { NamingStrategy = new CamelCaseNamingStrategy() } // Example if needed
         };
-        private static readonly JsonSerializer _outputSerializer = JsonSerializer.Create(_outputSerializerSettings);
+        public static readonly JsonSerializer OutputSerializer = JsonSerializer.Create(_outputSerializerSettings);
         // --- End Define custom JsonSerializerSettings ---
 
         // Helper to create JToken using the output serializer
@@ -663,7 +663,7 @@ namespace MCPForUnity.Editor.Helpers
             try
             {
                 // Use the pre-configured OUTPUT serializer instance
-                return JToken.FromObject(value, _outputSerializer);
+                return JToken.FromObject(value, OutputSerializer);
             }
             catch (JsonSerializationException e)
             {
