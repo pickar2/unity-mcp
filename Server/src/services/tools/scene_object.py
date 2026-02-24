@@ -168,7 +168,11 @@ async def scene_object(
     ] = None,
     include_internal: Annotated[
         bool | None,
-        "Include engine-internal properties (lightmap, raytracing, LOD, layer masks, deprecated aliases). Default: false.",
+        "Include engine-internal properties in component data. Default: false. "
+        "When false, built-in Unity components are automatically filtered: obsolete shortcuts (e.g. rigidbody, camera), "
+        "read-only computed properties (e.g. bounds, velocity), base-class noise (tag, name, gameObject, hideFlags), "
+        "and curated internal fields (lightmap, GI, physics solver settings). "
+        "User scripts are never filtered. Requesting specific properties via the 'properties' parameter bypasses filtering.",
     ] = None,
     page_size: Annotated[
         int | None, "Page size for list pagination. Default: 50."

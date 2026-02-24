@@ -134,6 +134,14 @@ async def manage_prefabs(
         'Set properties on multiple components in modify_contents. Keys are component type names, values are dicts of property name to value. Example: {"Rigidbody": {"mass": 5.0}, "MyScript": {"health": 100}}. Supports object references via {"guid": "..."}, {"path": "Assets/..."}, or {"instanceID": 123}.',
     ]
     | None = None,
+    include_internal: Annotated[
+        bool | None,
+        "Include engine-internal properties in component data. Default: false. "
+        "When false, built-in Unity components are automatically filtered: obsolete shortcuts (e.g. rigidbody, camera), "
+        "read-only computed properties (e.g. bounds, velocity), base-class noise (tag, name, gameObject, hideFlags), "
+        "and curated internal fields (lightmap, GI, physics solver settings). "
+        "User scripts are never filtered.",
+    ] = None,
 ) -> dict[str, Any]:
     # Back-compat: map 'name' → 'target' for create_from_gameobject (Unity accepts both)
     if action == "create_from_gameobject" and target is None and name is not None:
@@ -236,6 +244,10 @@ async def manage_prefabs(
             params["properties"] = properties
         if component_properties is not None:
             params["componentProperties"] = component_properties
+        if action in ("get_info", "get_hierarchy"):
+            include_int = coerce_bool(include_internal, default=None)
+            if include_int is not None:
+                params["includeInternal"] = include_int
         if create_child is not None:
             # Normalize vector fields within create_child (handles single object or array)
             def normalize_child_params(
