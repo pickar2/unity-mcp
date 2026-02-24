@@ -63,8 +63,20 @@ namespace MCPForUnity.Editor.Tools
 
                         if (recompile)
                         {
-                            var compileError = await RecompileHelper.RecompileAndWaitAsync().ConfigureAwait(true);
-                            if (compileError != null) return compileError;
+                            // Queue the refresh to run AFTER this response is sent back
+                            // over the WebSocket. Domain reload kills the connection, so
+                            // the Python side handles waiting for reconnection, verifying
+                            // compilation, and entering play mode.
+                            EditorApplication.delayCall += () =>
+                            {
+                                AssetDatabase.Refresh(ImportAssetOptions.ForceUpdate | ImportAssetOptions.ForceSynchronousImport);
+                            };
+                            return new SuccessResponse("Recompile initiated.", new
+                            {
+                                pending = "recompile",
+                                enterPlayMode = !EditorApplication.isPlaying,
+                                paused = paused,
+                            });
                         }
 
                         if (!EditorApplication.isPlaying)
