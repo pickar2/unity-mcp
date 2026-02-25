@@ -36,11 +36,22 @@ namespace MCPForUnity.Editor.Services
         private const string SessionKey_PrevInteractionMode = "TestRunnerNoThrottle_PrevInteractionMode";
         private const string SessionKey_SettingsCaptured = "TestRunnerNoThrottle_SettingsCaptured";
 
+#if !UNITY_6000_0_OR_NEWER
+        // Pre-Unity 6: must keep a reference to the TestRunnerApi instance to prevent GC.
+        private static TestRunnerApi _legacyApi;
+#endif
+
         static TestRunnerNoThrottle()
         {
             try
             {
+#if UNITY_6000_0_OR_NEWER
                 TestRunnerApi.RegisterTestCallback(new TestCallbacks());
+#else
+                _legacyApi = ScriptableObject.CreateInstance<TestRunnerApi>();
+                _legacyApi.hideFlags = HideFlags.HideAndDontSave;
+                _legacyApi.RegisterCallbacks(new TestCallbacks());
+#endif
 
                 // Check if recovering from domain reload during an active test run
                 if (IsTestRunActive())

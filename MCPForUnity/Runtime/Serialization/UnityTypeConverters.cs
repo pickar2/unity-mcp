@@ -364,7 +364,11 @@ namespace MCPForUnity.Runtime.Serialization
                 if (jo.TryGetValue("instanceID", out JToken idToken) && idToken.Type == JTokenType.Integer)
                 {
                     int instanceId = idToken.ToObject<int>();
+#if UNITY_6000_0_OR_NEWER
                     UnityEngine.Object obj = UnityEditor.EditorUtility.EntityIdToObject(instanceId);
+#else
+                    UnityEngine.Object obj = UnityEditor.EditorUtility.InstanceIDToObject(instanceId);
+#endif
                     if (obj != null)
                     {
                         // Direct type match

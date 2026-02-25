@@ -16,6 +16,19 @@ namespace MCPForUnity.Editor.Helpers
     public static class GameObjectLookup
     {
         /// <summary>
+        /// Resolves an instance ID to a UnityEngine.Object.
+        /// Uses EntityIdToObject on Unity 6+ and InstanceIDToObject on older versions.
+        /// </summary>
+        internal static UnityEngine.Object InstanceIdToObject(int instanceId)
+        {
+#if UNITY_6000_0_OR_NEWER
+            return EditorUtility.EntityIdToObject(instanceId);
+#else
+            return EditorUtility.InstanceIDToObject(instanceId);
+#endif
+        }
+
+        /// <summary>
         /// Supported search methods for finding GameObjects.
         /// </summary>
         public enum SearchMethod
@@ -69,7 +82,7 @@ namespace MCPForUnity.Editor.Helpers
         /// </summary>
         public static GameObject FindById(int instanceId)
         {
-            return EditorUtility.EntityIdToObject(instanceId) as GameObject;
+            return InstanceIdToObject(instanceId) as GameObject;
         }
 
         /// <summary>
@@ -103,7 +116,7 @@ namespace MCPForUnity.Editor.Helpers
                 case SearchMethod.ById:
                     if (int.TryParse(searchTerm, out int instanceId))
                     {
-                        var obj = EditorUtility.EntityIdToObject(instanceId) as GameObject;
+                        var obj = InstanceIdToObject(instanceId) as GameObject;
                         if (obj != null && (includeInactive || obj.activeInHierarchy))
                         {
                             results.Add(instanceId);

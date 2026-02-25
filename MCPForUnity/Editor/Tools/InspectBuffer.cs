@@ -215,7 +215,7 @@ namespace MCPForUnity.Editor.Tools
                     return (null, 0, 0, null);
                 }
 
-                var go = EditorUtility.EntityIdToObject(instanceId) as GameObject;
+                var go = GameObjectLookup.InstanceIdToObject(instanceId) as GameObject;
                 if (go == null)
                     return (null, 0, 0, null);
 

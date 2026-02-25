@@ -21,7 +21,7 @@ namespace MCPForUnity.Editor.Services
         private static readonly TestMode[] AllModes = { TestMode.EditMode, TestMode.PlayMode };
 
         // Instance needed for Execute/RetrieveTestList (no static equivalents yet).
-        // Callbacks use static RegisterTestCallback to avoid ScriptableObject lifecycle issues.
+        // Unity 6+: uses static RegisterTestCallback. Pre-6: uses instance RegisterCallbacks.
         private readonly TestRunnerApi _api;
         private readonly SemaphoreSlim _operationLock = new SemaphoreSlim(1, 1);
         private readonly List<ITestResultAdaptor> _leafResults = new List<ITestResultAdaptor>();
@@ -32,7 +32,11 @@ namespace MCPForUnity.Editor.Services
         {
             _api = ScriptableObject.CreateInstance<TestRunnerApi>();
             _api.hideFlags = HideFlags.HideAndDontSave;
+#if UNITY_6000_0_OR_NEWER
             TestRunnerApi.RegisterTestCallback(this);
+#else
+            _api.RegisterCallbacks(this);
+#endif
         }
 
         public async Task<IReadOnlyList<Dictionary<string, string>>> GetTestsAsync(TestMode? mode)
@@ -162,7 +166,11 @@ namespace MCPForUnity.Editor.Services
         {
             try
             {
+#if UNITY_6000_0_OR_NEWER
                 TestRunnerApi.UnregisterTestCallback(this);
+#else
+                _api.UnregisterCallbacks(this);
+#endif
             }
             catch
             {

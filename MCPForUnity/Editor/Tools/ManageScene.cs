@@ -695,7 +695,7 @@ namespace MCPForUnity.Editor.Tools
                 {
                     if (int.TryParse(targetToken.ToString(), out int id))
                     {
-                        var obj = EditorUtility.EntityIdToObject(id);
+                        var obj = GameObjectLookup.InstanceIdToObject(id);
                         if (obj is GameObject go) return go;
                         if (obj is Component c) return c.gameObject;
                     }

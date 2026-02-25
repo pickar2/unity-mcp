@@ -44,7 +44,7 @@ namespace MCPForUnity.Editor.Resources.Scene
 
             try
             {
-                var go = EditorUtility.EntityIdToObject(instanceID.Value) as GameObject;
+                var go = GameObjectLookup.InstanceIdToObject(instanceID.Value) as GameObject;
                 if (go == null)
                 {
                     return new ErrorResponse($"GameObject with instance ID {instanceID} not found.");
@@ -151,7 +151,7 @@ namespace MCPForUnity.Editor.Resources.Scene
 
             try
             {
-                var go = EditorUtility.EntityIdToObject(instanceID) as GameObject;
+                var go = GameObjectLookup.InstanceIdToObject(instanceID) as GameObject;
                 if (go == null)
                 {
                     return new ErrorResponse($"GameObject with instance ID {instanceID} not found.");
@@ -236,7 +236,7 @@ namespace MCPForUnity.Editor.Resources.Scene
 
             try
             {
-                var go = EditorUtility.EntityIdToObject(instanceID) as GameObject;
+                var go = GameObjectLookup.InstanceIdToObject(instanceID) as GameObject;
                 if (go == null)
                 {
                     return new ErrorResponse($"GameObject with instance ID {instanceID} not found.");
