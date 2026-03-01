@@ -402,8 +402,9 @@ namespace MCPForUnity.Editor.Tools.Prefabs
         }
 
         /// <summary>
-        /// Gets the hierarchical structure of a prefab asset.
-        /// Returns all objects in the prefab for full client-side filtering and search.
+        /// Gets the hierarchical structure of a prefab asset with pagination.
+        /// Supports page_size (default 200), cursor, and max_depth (default 50) parameters.
+        /// Response includes next_cursor when more items are available.
         /// </summary>
         private static object GetHierarchy(JObject @params)
         {
@@ -431,19 +432,36 @@ namespace MCPForUnity.Editor.Tools.Prefabs
                 var componentFilter = ParseComponentsParam(@params);
                 var p = new ToolParams(@params);
                 bool includeInternal = p.GetBool("includeInternal", false);
+                int pageSize = Mathf.Clamp(p.GetInt("page_size") ?? 200, 1, 1000);
+                int cursor = Mathf.Max(p.GetInt("cursor") ?? 0, 0);
+                int maxDepth = Mathf.Max(p.GetInt("max_depth") ?? 50, 0);
 
-                // Build complete hierarchy items (no pagination)
-                var allItems = BuildHierarchyItems(prefabContents.transform, sanitizedPath, componentFilter, includeInternal);
+                // Build hierarchy items with depth limit
+                var allItems = BuildHierarchyItems(prefabContents.transform, sanitizedPath, componentFilter, includeInternal, maxDepth);
+                int total = allItems.Count;
 
-                return new SuccessResponse(
-                    $"Successfully retrieved prefab hierarchy. Found {allItems.Count} objects.",
-                    new
-                    {
-                        prefabPath = sanitizedPath,
-                        total = allItems.Count,
-                        items = allItems
-                    }
-                );
+                // Apply pagination
+                var pagedItems = allItems.Skip(cursor).Take(pageSize).ToList();
+                int? nextCursor = (cursor + pageSize < total) ? cursor + pageSize : (int?)null;
+
+                var result = new Dictionary<string, object>
+                {
+                    ["prefabPath"] = sanitizedPath,
+                    ["total"] = total,
+                    ["cursor"] = cursor,
+                    ["page_size"] = pageSize,
+                    ["items"] = pagedItems
+                };
+                if (nextCursor.HasValue)
+                    result["next_cursor"] = nextCursor.Value;
+                if (maxDepth < 50)
+                    result["max_depth"] = maxDepth;
+
+                string message = nextCursor.HasValue
+                    ? $"Prefab hierarchy: showing {pagedItems.Count} of {total} objects (cursor={cursor}). More items available — use next_cursor={nextCursor.Value} to continue."
+                    : $"Prefab hierarchy: {total} objects total.";
+
+                return new SuccessResponse(message, result);
             }
             finally
             {
@@ -1012,10 +1030,10 @@ namespace MCPForUnity.Editor.Tools.Prefabs
         /// <param name="root">The root transform of the prefab.</param>
         /// <param name="mainPrefabPath">Asset path of the main prefab.</param>
         /// <returns>List of hierarchy items with prefab information.</returns>
-        private static List<object> BuildHierarchyItems(Transform root, string mainPrefabPath, HashSet<string> componentFilter = null, bool includeInternal = false)
+        private static List<object> BuildHierarchyItems(Transform root, string mainPrefabPath, HashSet<string> componentFilter = null, bool includeInternal = false, int maxDepth = 50)
         {
             var items = new List<object>();
-            BuildHierarchyItemsRecursive(root, root, mainPrefabPath, "", items, componentFilter, includeInternal);
+            BuildHierarchyItemsRecursive(root, root, mainPrefabPath, "", items, componentFilter, includeInternal, 0, maxDepth);
             return items;
         }
 
@@ -1027,9 +1045,10 @@ namespace MCPForUnity.Editor.Tools.Prefabs
         /// <param name="mainPrefabPath">Asset path of the main prefab.</param>
         /// <param name="parentPath">Parent path for building full hierarchy path.</param>
         /// <param name="items">List to accumulate hierarchy items.</param>
-        private static void BuildHierarchyItemsRecursive(Transform transform, Transform mainPrefabRoot, string mainPrefabPath, string parentPath, List<object> items, HashSet<string> componentFilter, bool includeInternal = false)
+        private static void BuildHierarchyItemsRecursive(Transform transform, Transform mainPrefabRoot, string mainPrefabPath, string parentPath, List<object> items, HashSet<string> componentFilter, bool includeInternal, int currentDepth, int maxDepth)
         {
             if (transform == null) return;
+            if (maxDepth > 0 && currentDepth > maxDepth) return;
 
             GameObject go = transform.gameObject;
             string name = go.name;
@@ -1076,7 +1095,7 @@ namespace MCPForUnity.Editor.Tools.Prefabs
             // Recursively process children
             foreach (Transform child in transform)
             {
-                BuildHierarchyItemsRecursive(child, mainPrefabRoot, mainPrefabPath, path, items, componentFilter, includeInternal);
+                BuildHierarchyItemsRecursive(child, mainPrefabRoot, mainPrefabPath, path, items, componentFilter, includeInternal, currentDepth + 1, maxDepth);
             }
         }
 

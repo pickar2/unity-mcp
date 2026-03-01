@@ -1,7 +1,9 @@
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Linq;
 using System.Reflection;
+using System.Threading.Tasks;
 using MCPForUnity.Runtime.Serialization; // For Converters
 using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
@@ -79,6 +81,25 @@ namespace MCPForUnity.Editor.Helpers
             // Collider: advanced
             "hasModifiableContacts", "providesContacts",
         };
+
+        /// <summary>
+        /// Maximum time (ms) allowed for reading all properties/fields of a single component.
+        /// If exceeded, remaining properties are skipped and a warning is logged.
+        /// </summary>
+        private const int ComponentBudgetMs = 2000;
+
+        /// <summary>
+        /// Maximum time (ms) allowed for a single property/field getter.
+        /// Uses Task.Run + Wait to interrupt getters that hang indefinitely.
+        /// Only applied after a per-component Stopwatch shows the component is already slow.
+        /// </summary>
+        private const int PropertyTimeoutMs = 500;
+
+        /// <summary>
+        /// Threshold (ms) for a single property read. If any read exceeds this,
+        /// subsequent reads for the same component switch to guarded (threaded timeout) mode.
+        /// </summary>
+        private const int SlowPropertyThresholdMs = 100;
 
         // --- Data Serialization ---
 
@@ -470,14 +491,24 @@ namespace MCPForUnity.Editor.Helpers
 
             // --- Use cached metadata ---
             var serializablePropertiesOutput = new Dictionary<string, object>();
-
-            // --- Add Logging Before Property Loop ---
-            // McpLog.Info($"[GetComponentData] Starting property loop for {componentType.Name}...");
-            // --- End Logging Before Property Loop ---
+            var componentSw = Stopwatch.StartNew();
+            bool useGuardedRead = false; // Escalate to threaded timeout if any read is slow
+            int skippedCount = 0;
 
             // Use cached properties
             foreach (var propInfo in cachedData.SerializableProperties)
             {
+                // Budget check: stop serializing this component if over time
+                if (componentSw.ElapsedMilliseconds > ComponentBudgetMs)
+                {
+                    skippedCount = cachedData.SerializableProperties.Count
+                                 + cachedData.SerializableFields.Count
+                                 - serializablePropertiesOutput.Count;
+                    McpLog.Warn($"[GetComponentData] Time budget exceeded for {componentType.Name} " +
+                                $"({componentSw.ElapsedMilliseconds}ms). Skipped ~{skippedCount} remaining members.");
+                    break;
+                }
+
                 string propName = propInfo.Name;
                 bool skipProperty = false;
 
@@ -517,72 +548,61 @@ namespace MCPForUnity.Editor.Helpers
 
                 try
                 {
-                    // --- Add detailed logging --- 
-                    // McpLog.Info($"[GetComponentData] Accessing: {componentType.Name}.{propName}");
-                    // --- End detailed logging ---
-
-                    // --- Special handling for material/mesh properties in edit mode ---
                     object value;
                     if (!Application.isPlaying && (propName == "material" || propName == "materials" || propName == "mesh"))
                     {
-                        // In edit mode, use sharedMaterial/sharedMesh to avoid instantiation warnings
                         if ((propName == "material" || propName == "materials") && c is Renderer renderer)
-                        {
-                            if (propName == "material")
-                                value = renderer.sharedMaterial;
-                            else // materials
-                                value = renderer.sharedMaterials;
-                        }
+                            value = propName == "material" ? (object)renderer.sharedMaterial : renderer.sharedMaterials;
                         else if (propName == "mesh" && c is MeshFilter meshFilter)
-                        {
                             value = meshFilter.sharedMesh;
-                        }
                         else
-                        {
-                            // Fallback to normal property access if type doesn't match
-                            value = propInfo.GetValue(c);
-                        }
+                            value = ReadPropertyValue(propInfo, c, componentType, ref useGuardedRead);
                     }
                     else
                     {
-                        value = propInfo.GetValue(c);
+                        value = ReadPropertyValue(propInfo, c, componentType, ref useGuardedRead);
                     }
-                    // --- End special handling ---
 
                     Type propType = propInfo.PropertyType;
                     AddSerializableValue(serializablePropertiesOutput, propName, propType, value);
                 }
+                catch (TimeoutException)
+                {
+                    McpLog.Warn($"[GetComponentData] Property '{propName}' on {componentType.Name} timed out. Skipping.");
+                }
                 catch (Exception)
                 {
-                    // McpLog.Warn($"Could not read property {propName} on {componentType.Name}");
+                    // Silently skip unreadable properties
                 }
             }
 
-            // --- Add Logging Before Field Loop ---
-            // McpLog.Info($"[GetComponentData] Starting field loop for {componentType.Name}...");
-            // --- End Logging Before Field Loop ---
-
-            // Use cached fields
-            foreach (var fieldInfo in cachedData.SerializableFields)
+            // Use cached fields (only if budget not exhausted)
+            if (componentSw.ElapsedMilliseconds <= ComponentBudgetMs)
             {
-                if (shouldFilterInternal &&
-                    (InternalPropertyNames.Contains(fieldInfo.Name) ||
-                     NoiseBaseTypes.Contains(fieldInfo.DeclaringType)))
-                    continue;
+                foreach (var fieldInfo in cachedData.SerializableFields)
+                {
+                    if (componentSw.ElapsedMilliseconds > ComponentBudgetMs)
+                    {
+                        McpLog.Warn($"[GetComponentData] Time budget exceeded for {componentType.Name} during field reads.");
+                        break;
+                    }
 
-                try
-                {
-                    // --- Add detailed logging for fields --- 
-                    // McpLog.Info($"[GetComponentData] Accessing Field: {componentType.Name}.{fieldInfo.Name}");
-                    // --- End detailed logging for fields ---
-                    object value = fieldInfo.GetValue(c);
-                    string fieldName = fieldInfo.Name;
-                    Type fieldType = fieldInfo.FieldType;
-                    AddSerializableValue(serializablePropertiesOutput, fieldName, fieldType, value);
-                }
-                catch (Exception)
-                {
-                    // McpLog.Warn($"Could not read field {fieldInfo.Name} on {componentType.Name}");
+                    if (shouldFilterInternal &&
+                        (InternalPropertyNames.Contains(fieldInfo.Name) ||
+                         NoiseBaseTypes.Contains(fieldInfo.DeclaringType)))
+                        continue;
+
+                    try
+                    {
+                        object value = fieldInfo.GetValue(c);
+                        string fieldName = fieldInfo.Name;
+                        Type fieldType = fieldInfo.FieldType;
+                        AddSerializableValue(serializablePropertiesOutput, fieldName, fieldType, value);
+                    }
+                    catch (Exception)
+                    {
+                        // Silently skip unreadable fields
+                    }
                 }
             }
             // --- End Use cached metadata ---
@@ -593,6 +613,43 @@ namespace MCPForUnity.Editor.Helpers
             }
 
             return data;
+        }
+
+        /// <summary>
+        /// Reads a property value with optional guarded (threaded timeout) mode.
+        /// When useGuardedRead is true, the getter runs on a thread pool thread with a timeout.
+        /// If any non-guarded read takes longer than SlowPropertyThresholdMs, escalates to guarded mode.
+        /// Throws TimeoutException if the getter hangs.
+        /// </summary>
+        private static object ReadPropertyValue(PropertyInfo propInfo, Component c, Type componentType, ref bool useGuardedRead)
+        {
+            if (useGuardedRead)
+            {
+                // Already know this component is slow — use threaded timeout
+                object result = null;
+                Exception caught = null;
+                var task = Task.Run(() =>
+                {
+                    try { result = propInfo.GetValue(c); }
+                    catch (Exception ex) { caught = ex; }
+                });
+                if (!task.Wait(PropertyTimeoutMs))
+                    throw new TimeoutException($"{componentType.Name}.{propInfo.Name}");
+                if (caught != null)
+                    throw caught;
+                return result;
+            }
+
+            // Normal read with timing
+            long before = Stopwatch.GetTimestamp();
+            object value = propInfo.GetValue(c);
+            long elapsed = (Stopwatch.GetTimestamp() - before) * 1000 / Stopwatch.Frequency;
+            if (elapsed > SlowPropertyThresholdMs)
+            {
+                McpLog.Warn($"[GetComponentData] Slow property: {componentType.Name}.{propInfo.Name} took {elapsed}ms. Switching to guarded reads.");
+                useGuardedRead = true;
+            }
+            return value;
         }
 
         // Helper function to decide how to serialize different types

@@ -24,6 +24,7 @@ REQUIRED_PARAMS = {
     description="""Manage Unity Prefab assets via headless operations (no UI, no prefab stages).
 
 Actions: get_info, get_hierarchy, create_from_gameobject, modify_contents.
+get_hierarchy is paginated (default 200 items). Use next_cursor from response to fetch more pages.
 Use components=true with get_info/get_hierarchy to include serialized field values, or components=["TypeA","TypeB"] to filter.
 Use modify_contents for headless prefab editing - ideal for automated workflows.
 Use create_child parameter with modify_contents to add child GameObjects to a prefab (single object or array for batch creation in one save).
@@ -34,6 +35,8 @@ Supports object references via {"guid": "..."}, {"path": "Assets/..."}, or {"ins
 Examples:
   manage_prefabs(action="get_info", prefab_path="Assets/Prefabs/Player.prefab")
   manage_prefabs(action="get_hierarchy", prefab_path="Assets/Prefabs/Player.prefab")
+  manage_prefabs(action="get_hierarchy", prefab_path="Assets/Prefabs/Player.prefab", components=["MeshRenderer"], page_size=50)
+  manage_prefabs(action="get_hierarchy", prefab_path="...", cursor=200)  # fetch next page using next_cursor from previous response
   manage_prefabs(action="create_from_gameobject", target="Player", prefab_path="Assets/Prefabs/Player.prefab")
   manage_prefabs(action="modify_contents", prefab_path="Assets/Prefabs/Player.prefab", target="Body", position=[0,1,0])
   manage_prefabs(action="modify_contents", prefab_path="Assets/Prefabs/Player.prefab", create_child={"name": "Shield", "primitive_type": "Cube", "scale": [0.5,1,0.1]})
@@ -142,6 +145,18 @@ async def manage_prefabs(
         "and curated internal fields (lightmap, GI, physics solver settings). "
         "User scripts are never filtered.",
     ] = None,
+    page_size: Annotated[
+        int | None,
+        "Page size for get_hierarchy pagination. Default: 200, max: 1000.",
+    ] = None,
+    cursor: Annotated[
+        int | None,
+        "Pagination cursor for get_hierarchy. Default: 0. Use next_cursor from previous response.",
+    ] = None,
+    max_depth: Annotated[
+        int | None,
+        "Max hierarchy depth for get_hierarchy. Default: 50. 0=unlimited.",
+    ] = None,
 ) -> dict[str, Any]:
     # Back-compat: map 'name' → 'target' for create_from_gameobject (Unity accepts both)
     if action == "create_from_gameobject" and target is None and name is not None:
@@ -248,6 +263,13 @@ async def manage_prefabs(
             include_int = coerce_bool(include_internal, default=None)
             if include_int is not None:
                 params["includeInternal"] = include_int
+        if action == "get_hierarchy":
+            if page_size is not None:
+                params["page_size"] = int(page_size)
+            if cursor is not None:
+                params["cursor"] = int(cursor)
+            if max_depth is not None:
+                params["max_depth"] = int(max_depth)
         if create_child is not None:
             # Normalize vector fields within create_child (handles single object or array)
             def normalize_child_params(
