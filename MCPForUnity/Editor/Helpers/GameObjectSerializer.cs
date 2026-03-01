@@ -494,6 +494,7 @@ namespace MCPForUnity.Editor.Helpers
             var componentSw = Stopwatch.StartNew();
             bool useGuardedRead = false; // Escalate to threaded timeout if any read is slow
             int skippedCount = 0;
+            var slowMembers = new List<string>(); // Collect slow member names for summary log
 
             // Use cached properties
             foreach (var propInfo in cachedData.SerializableProperties)
@@ -548,6 +549,7 @@ namespace MCPForUnity.Editor.Helpers
 
                 try
                 {
+                    long memberStart = Stopwatch.GetTimestamp();
                     object value;
                     if (!Application.isPlaying && (propName == "material" || propName == "materials" || propName == "mesh"))
                     {
@@ -565,10 +567,15 @@ namespace MCPForUnity.Editor.Helpers
 
                     Type propType = propInfo.PropertyType;
                     AddSerializableValue(serializablePropertiesOutput, propName, propType, value);
+
+                    long memberMs = (Stopwatch.GetTimestamp() - memberStart) * 1000 / Stopwatch.Frequency;
+                    if (memberMs >= SlowPropertyThresholdMs)
+                        slowMembers.Add($"{propName}({memberMs}ms)");
                 }
                 catch (TimeoutException)
                 {
-                    McpLog.Warn($"[GetComponentData] Property '{propName}' on {componentType.Name} timed out. Skipping.");
+                    slowMembers.Add($"{propName}(TIMEOUT)");
+                    McpLog.Warn($"[GetComponentData] Property '{propName}' on {componentType.Name} timed out ({PropertyTimeoutMs}ms). Skipping.");
                 }
                 catch (Exception)
                 {
@@ -594,10 +601,15 @@ namespace MCPForUnity.Editor.Helpers
 
                     try
                     {
+                        long memberStart = Stopwatch.GetTimestamp();
                         object value = fieldInfo.GetValue(c);
                         string fieldName = fieldInfo.Name;
                         Type fieldType = fieldInfo.FieldType;
                         AddSerializableValue(serializablePropertiesOutput, fieldName, fieldType, value);
+
+                        long memberMs = (Stopwatch.GetTimestamp() - memberStart) * 1000 / Stopwatch.Frequency;
+                        if (memberMs >= SlowPropertyThresholdMs)
+                            slowMembers.Add($"{fieldName}({memberMs}ms)");
                     }
                     catch (Exception)
                     {
@@ -606,6 +618,12 @@ namespace MCPForUnity.Editor.Helpers
                 }
             }
             // --- End Use cached metadata ---
+            componentSw.Stop();
+            if (slowMembers.Count > 0)
+            {
+                McpLog.Warn($"[GetComponentData] {componentType.Name} took {componentSw.ElapsedMilliseconds}ms total. " +
+                            $"Slow members: {string.Join(", ", slowMembers)}");
+            }
 
             if (serializablePropertiesOutput.Count > 0)
             {
