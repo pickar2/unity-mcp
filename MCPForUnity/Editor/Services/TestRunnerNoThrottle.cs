@@ -4,7 +4,6 @@
 // Note: Tests that trigger mid-run compilation may still stall due to OS-level throttling.
 
 using System;
-using System.Reflection;
 using MCPForUnity.Editor.Helpers;
 using UnityEditor;
 using UnityEditor.TestTools.TestRunner.Api;
@@ -103,7 +102,6 @@ namespace MCPForUnity.Editor.Services
             EditorPrefs.SetInt(ApplicationIdleTimeKey, 0);
             EditorPrefs.SetInt(InteractionModeKey, 1);
 
-            ForceEditorToApplyInteractionPrefs();
             McpLog.Info("[TestRunnerNoThrottle] Applied No Throttling for test run.");
         }
 
@@ -113,27 +111,10 @@ namespace MCPForUnity.Editor.Services
 
             EditorPrefs.SetInt(ApplicationIdleTimeKey, GetPrevIdleTime());
             EditorPrefs.SetInt(InteractionModeKey, GetPrevInteractionMode());
-            ForceEditorToApplyInteractionPrefs();
 
             SetSettingsCaptured(false);
             SetTestRunActive(false);
             McpLog.Info("[TestRunnerNoThrottle] Restored Interaction Mode after test run.");
-        }
-
-        private static void ForceEditorToApplyInteractionPrefs()
-        {
-            try
-            {
-                var method = typeof(EditorApplication).GetMethod(
-                    "UpdateInteractionModeSettings",
-                    BindingFlags.Static | BindingFlags.NonPublic
-                );
-                method?.Invoke(null, null);
-            }
-            catch
-            {
-                // Ignore reflection errors
-            }
         }
 
         private sealed class TestCallbacks : ICallbacks
