@@ -19,6 +19,11 @@ namespace MCPForUnity.Editor.Tools
                 return new ErrorResponse("Action is required");
             }
 
+            if (EditorApplication.isPlaying && action == "create")
+            {
+                return new ErrorResponse("Cannot create materials in play mode. Exit play mode first.");
+            }
+
             try
             {
                 switch (action)
@@ -99,7 +104,8 @@ namespace MCPForUnity.Editor.Tools
             if (value.Type == JTokenType.Object)
             {
                 // Check if it looks like an instruction
-                if (value is JObject obj && (obj.ContainsKey("find") || obj.ContainsKey("method")))
+                if (value is JObject obj && (obj.ContainsKey("find") || obj.ContainsKey("method") ||
+                    obj.ContainsKey("instanceID") || obj.ContainsKey("guid") || obj.ContainsKey("path")))
                 {
                     Texture tex = ObjectResolver.Resolve(obj, typeof(Texture)) as Texture;
                     if (tex != null && mat.HasProperty(property))

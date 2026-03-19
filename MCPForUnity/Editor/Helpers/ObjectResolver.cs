@@ -26,7 +26,8 @@ namespace MCPForUnity.Editor.Helpers
         /// <summary>
         /// Resolves any Unity Object by instruction.
         /// </summary>
-        /// <param name="instruction">JObject with "find" (required), "method" (optional), "component" (optional)</param>
+        /// <param name="instruction">JObject with one of: "instanceID" (int), "guid" (string), "path" (asset path),
+        /// or "find" (name/path search with optional "method" and "component")</param>
         /// <param name="targetType">The type of Unity Object to resolve</param>
         /// <returns>The resolved object, or null if not found</returns>
         public static UnityEngine.Object Resolve(JObject instruction, Type targetType)
@@ -34,13 +35,50 @@ namespace MCPForUnity.Editor.Helpers
             if (instruction == null)
                 return null;
 
+            // --- Direct reference formats (parity with ComponentOps.SetObjectReference) ---
+
+            // {"instanceID": <int>} — resolve scene/asset object by instance ID
+            var instanceIdToken = instruction["instanceID"];
+            if (instanceIdToken != null && instanceIdToken.Type == JTokenType.Integer)
+            {
+                var resolved = GameObjectLookup.InstanceIdToObject(instanceIdToken.Value<int>());
+                if (resolved == null) return null;
+                if (targetType.IsAssignableFrom(resolved.GetType()))
+                    return resolved;
+                // GameObject → Component extraction
+                if (typeof(Component).IsAssignableFrom(targetType) && resolved is GameObject go)
+                    return go.GetComponent(targetType);
+                // Component → GameObject
+                if (targetType == typeof(GameObject) && resolved is Component comp)
+                    return comp.gameObject;
+                return resolved;
+            }
+
+            // {"guid": "<guid>"} — resolve asset by GUID
+            var guidToken = instruction["guid"];
+            if (guidToken != null && guidToken.Type == JTokenType.String)
+            {
+                string assetPath = AssetDatabase.GUIDToAssetPath(guidToken.ToString());
+                return !string.IsNullOrEmpty(assetPath) ? AssetDatabase.LoadAssetAtPath(assetPath, targetType) : null;
+            }
+
+            // {"path": "<assetPath>"} — resolve asset by path
+            var pathToken = instruction["path"];
+            if (pathToken != null && pathToken.Type == JTokenType.String)
+            {
+                string sanitized = AssetPathUtility.SanitizeAssetPath(pathToken.ToString());
+                return !string.IsNullOrEmpty(sanitized) ? AssetDatabase.LoadAssetAtPath(sanitized, targetType) : null;
+            }
+
+            // --- Existing {"find": "..."} search format ---
+
             string findTerm = instruction["find"]?.ToString();
             string method = instruction["method"]?.ToString()?.ToLower();
             string componentName = instruction["component"]?.ToString();
 
             if (string.IsNullOrEmpty(findTerm))
             {
-                McpLog.Warn("[ObjectResolver] Find instruction missing 'find' term.");
+                McpLog.Warn("[ObjectResolver] Resolve instruction missing a recognized key (find, instanceID, guid, or path).");
                 return null;
             }
 

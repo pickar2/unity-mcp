@@ -421,7 +421,7 @@ namespace MCPForUnity.Editor.Tools
             EditorUtility.SetDirty(go);
             MarkOwningSceneDirty(go);
 
-            return new SuccessResponse($"Updated object '{go.name}'.", new
+            return new SuccessResponse(WithPlayModeHint($"Updated object '{go.name}'."), new
             {
                 path = GetGameObjectPath(go),
                 instance_id = go.GetInstanceID(),
@@ -457,8 +457,8 @@ namespace MCPForUnity.Editor.Tools
             }
 
             if (errors.Count > 0)
-                return new SuccessResponse($"Updated {affected.Count} objects with {errors.Count} error(s).", new { affected, count = affected.Count, errors });
-            return new SuccessResponse($"Updated {affected.Count} objects.", new { affected, count = affected.Count });
+                return new SuccessResponse(WithPlayModeHint($"Updated {affected.Count} objects with {errors.Count} error(s)."), new { affected, count = affected.Count, errors });
+            return new SuccessResponse(WithPlayModeHint($"Updated {affected.Count} objects."), new { affected, count = affected.Count });
         }
 
         private class SetResult
@@ -856,7 +856,7 @@ namespace MCPForUnity.Editor.Tools
             EditorUtility.SetDirty(newGo);
             MarkOwningSceneDirty(newGo);
 
-            return new SuccessResponse($"Created object '{name}'.", new
+            return new SuccessResponse(WithPlayModeHint($"Created object '{name}'."), new
             {
                 path = GetGameObjectPath(newGo),
                 name = newGo.name,
@@ -909,7 +909,7 @@ namespace MCPForUnity.Editor.Tools
 
             Undo.DestroyObjectImmediate(go);
 
-            return new SuccessResponse($"Deleted object '{path}'.", new
+            return new SuccessResponse(WithPlayModeHint($"Deleted object '{path}'."), new
             {
                 deleted = new[] { new { path, instance_id = instanceId } },
                 count = 1
@@ -942,7 +942,7 @@ namespace MCPForUnity.Editor.Tools
                 Undo.DestroyObjectImmediate(go);
             }
 
-            return new SuccessResponse($"Deleted {deleted.Count} objects.", new { deleted, count = deleted.Count });
+            return new SuccessResponse(WithPlayModeHint($"Deleted {deleted.Count} objects."), new { deleted, count = deleted.Count });
         }
 
         #endregion
@@ -1007,7 +1007,7 @@ namespace MCPForUnity.Editor.Tools
             EditorUtility.SetDirty(duplicatedGo);
             MarkOwningSceneDirty(duplicatedGo);
 
-            return new SuccessResponse($"Duplicated '{sourceGo.name}' as '{duplicatedGo.name}'.", new
+            return new SuccessResponse(WithPlayModeHint($"Duplicated '{sourceGo.name}' as '{duplicatedGo.name}'."), new
             {
                 source = new { path = GetGameObjectPath(sourceGo), instance_id = sourceGo.GetInstanceID() },
                 duplicate = new
@@ -1077,7 +1077,7 @@ namespace MCPForUnity.Editor.Tools
             EditorUtility.SetDirty(targetGo);
             MarkOwningSceneDirty(targetGo);
 
-            return new SuccessResponse($"Moved '{targetGo.name}' relative to '{refGo.name}'.", new
+            return new SuccessResponse(WithPlayModeHint($"Moved '{targetGo.name}' relative to '{refGo.name}'."), new
             {
                 path = GetGameObjectPath(targetGo),
                 instance_id = targetGo.GetInstanceID(),
@@ -1126,6 +1126,19 @@ namespace MCPForUnity.Editor.Tools
         private static ResolveResult ResolveTargetWithAmbiguity(JToken targetToken)
         {
             var result = new ResolveResult();
+
+            // Handle JObject instruction: {"instanceID": ...}, {"find": ...}, {"guid": ...}, {"path": ...}
+            if (targetToken is JObject instruction)
+            {
+                var resolved = ObjectResolver.Resolve(instruction, typeof(GameObject));
+                if (resolved is GameObject go)
+                    result.GameObject = go;
+                else if (resolved is Component comp)
+                    result.GameObject = comp.gameObject;
+                else
+                    result.Error = new ErrorResponse($"Could not resolve target from instruction: {instruction.ToString(Newtonsoft.Json.Formatting.None)}");
+                return result;
+            }
 
             if (targetToken.Type == JTokenType.Integer || int.TryParse(targetToken.ToString(), out _))
             {
@@ -1279,8 +1292,22 @@ namespace MCPForUnity.Editor.Tools
             return GameObjectLookup.GetGameObjectPath(obj);
         }
 
+        /// <summary>
+        /// Appends a play mode warning to the message so agents know changes are transient.
+        /// </summary>
+        private static string WithPlayModeHint(string message)
+        {
+            return EditorApplication.isPlaying
+                ? message + " [play mode — changes won't persist after exiting]"
+                : message;
+        }
+
         private static void MarkOwningSceneDirty(GameObject targetGo)
         {
+            // Skip in play mode — marking dirty triggers save dialogs on exit
+            if (EditorApplication.isPlaying)
+                return;
+
             var prefabStage = PrefabStageUtility.GetCurrentPrefabStage();
             if (prefabStage != null)
             {

@@ -78,6 +78,13 @@ namespace MCPForUnity.Editor.Tools
                 }
             }
 
+            // Block asset-pipeline operations in play mode (can trigger domain reload)
+            if (EditorApplication.isPlaying &&
+                (action == "create" || action == "import" || action == "delete" || action == "move" || action == "copy" || action == "create_folder"))
+            {
+                return new ErrorResponse($"Cannot {action} assets in play mode. Exit play mode first.");
+            }
+
             try
             {
                 switch (action)

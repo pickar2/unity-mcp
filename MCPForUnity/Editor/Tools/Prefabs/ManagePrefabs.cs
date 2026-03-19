@@ -38,6 +38,14 @@ namespace MCPForUnity.Editor.Tools.Prefabs
                 return new ErrorResponse($"Action parameter is required. Valid actions are: {SupportedActions}.");
             }
 
+            // Block asset-modifying actions in play mode (triggers asset pipeline / domain reload)
+            if (EditorApplication.isPlaying &&
+                (action == ACTION_CREATE_FROM_GAMEOBJECT || action == ACTION_MODIFY_CONTENTS))
+            {
+                return new ErrorResponse(
+                    $"Cannot {action} prefabs in play mode. Exit play mode first.");
+            }
+
             try
             {
                 switch (action)
@@ -436,8 +444,42 @@ namespace MCPForUnity.Editor.Tools.Prefabs
                 int cursor = Mathf.Max(p.GetInt("cursor") ?? 0, 0);
                 int maxDepth = Mathf.Max(p.GetInt("max_depth") ?? 50, 0);
 
+                // Parse optional properties filter — same semantics as scene_object's properties param:
+                // a list of property names to include per component (e.g. ["sizeDelta", "anchoredPosition"]).
+                HashSet<string> propertiesFilter = null;
+                var propsToken = @params["properties"];
+                if (propsToken != null && propsToken.Type == JTokenType.Array)
+                {
+                    propertiesFilter = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+                    foreach (var item in propsToken)
+                    {
+                        string val = item?.ToString();
+                        if (!string.IsNullOrEmpty(val))
+                            propertiesFilter.Add(val);
+                    }
+                }
+                else if (propsToken != null && propsToken.Type == JTokenType.String)
+                {
+                    // Handle JSON-string form: '["sizeDelta","anchoredPosition"]'
+                    try
+                    {
+                        var parsed = JArray.Parse(propsToken.ToString());
+                        propertiesFilter = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+                        foreach (var item in parsed)
+                        {
+                            string val = item?.ToString();
+                            if (!string.IsNullOrEmpty(val))
+                                propertiesFilter.Add(val);
+                        }
+                    }
+                    catch { /* not valid JSON array — ignore */ }
+                }
+                // If properties filter is specified, implicitly enable component data
+                if (propertiesFilter != null && propertiesFilter.Count > 0 && componentFilter == null)
+                    componentFilter = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
                 // Build hierarchy items with depth limit
-                var allItems = BuildHierarchyItems(prefabContents.transform, sanitizedPath, componentFilter, includeInternal, maxDepth);
+                var allItems = BuildHierarchyItems(prefabContents.transform, sanitizedPath, componentFilter, includeInternal, maxDepth, propertiesFilter);
                 int total = allItems.Count;
 
                 // Apply pagination
@@ -1030,10 +1072,10 @@ namespace MCPForUnity.Editor.Tools.Prefabs
         /// <param name="root">The root transform of the prefab.</param>
         /// <param name="mainPrefabPath">Asset path of the main prefab.</param>
         /// <returns>List of hierarchy items with prefab information.</returns>
-        private static List<object> BuildHierarchyItems(Transform root, string mainPrefabPath, HashSet<string> componentFilter = null, bool includeInternal = false, int maxDepth = 50)
+        private static List<object> BuildHierarchyItems(Transform root, string mainPrefabPath, HashSet<string> componentFilter = null, bool includeInternal = false, int maxDepth = 50, HashSet<string> propertiesFilter = null)
         {
             var items = new List<object>();
-            BuildHierarchyItemsRecursive(root, root, mainPrefabPath, "", items, componentFilter, includeInternal, 0, maxDepth);
+            BuildHierarchyItemsRecursive(root, root, mainPrefabPath, "", items, componentFilter, includeInternal, 0, maxDepth, propertiesFilter);
             return items;
         }
 
@@ -1045,7 +1087,7 @@ namespace MCPForUnity.Editor.Tools.Prefabs
         /// <param name="mainPrefabPath">Asset path of the main prefab.</param>
         /// <param name="parentPath">Parent path for building full hierarchy path.</param>
         /// <param name="items">List to accumulate hierarchy items.</param>
-        private static void BuildHierarchyItemsRecursive(Transform transform, Transform mainPrefabRoot, string mainPrefabPath, string parentPath, List<object> items, HashSet<string> componentFilter, bool includeInternal, int currentDepth, int maxDepth)
+        private static void BuildHierarchyItemsRecursive(Transform transform, Transform mainPrefabRoot, string mainPrefabPath, string parentPath, List<object> items, HashSet<string> componentFilter, bool includeInternal, int currentDepth, int maxDepth, HashSet<string> propertiesFilter = null)
         {
             if (transform == null) return;
             if (maxDepth > 0 && currentDepth > maxDepth) return;
@@ -1087,7 +1129,7 @@ namespace MCPForUnity.Editor.Tools.Prefabs
 
             if (componentFilter != null)
             {
-                item["components"] = SerializeComponentData(go, componentFilter, includeInternal);
+                item["components"] = SerializeComponentData(go, componentFilter, includeInternal, propertiesFilter);
             }
 
             items.Add(item);
@@ -1095,7 +1137,7 @@ namespace MCPForUnity.Editor.Tools.Prefabs
             // Recursively process children
             foreach (Transform child in transform)
             {
-                BuildHierarchyItemsRecursive(child, mainPrefabRoot, mainPrefabPath, path, items, componentFilter, includeInternal, currentDepth + 1, maxDepth);
+                BuildHierarchyItemsRecursive(child, mainPrefabRoot, mainPrefabPath, path, items, componentFilter, includeInternal, currentDepth + 1, maxDepth, propertiesFilter);
             }
         }
 
@@ -1134,10 +1176,11 @@ namespace MCPForUnity.Editor.Tools.Prefabs
         }
 
         /// <summary>
-        /// Serializes component data for a GameObject, optionally filtered by type names.
+        /// Serializes component data for a GameObject, optionally filtered by type names and properties.
         /// Empty filter = all components. Populated filter = only matching types.
+        /// propertiesFilter narrows which properties are included per component (same as scene_object).
         /// </summary>
-        private static List<object> SerializeComponentData(GameObject go, HashSet<string> filter, bool includeInternal = false)
+        private static List<object> SerializeComponentData(GameObject go, HashSet<string> filter, bool includeInternal = false, HashSet<string> propertiesFilter = null)
         {
             var list = new List<object>();
             bool filterAll = filter.Count == 0;
@@ -1146,8 +1189,38 @@ namespace MCPForUnity.Editor.Tools.Prefabs
             {
                 if (comp == null) continue;
                 string typeName = comp.GetType().Name;
-                if (filterAll || filter.Contains(typeName))
-                    list.Add(GameObjectSerializer.GetComponentData(comp, includeInternal: includeInternal));
+                if (!filterAll && !filter.Contains(typeName))
+                    continue;
+
+                // If the caller explicitly requested specific properties, bypass internal filtering
+                // so the agent gets exactly what it asked for. The propertiesFilter narrows the output anyway.
+                bool effectiveIncludeInternal = (propertiesFilter != null && propertiesFilter.Count > 0) || includeInternal;
+                var data = GameObjectSerializer.GetComponentData(comp, includeInternal: effectiveIncludeInternal);
+
+                // Apply property-level filtering (same logic as SceneObject.SerializeComponents)
+                if (propertiesFilter != null && propertiesFilter.Count > 0 && data is Dictionary<string, object> dataDict)
+                {
+                    if (dataDict.TryGetValue("properties", out var propsObj) && propsObj is Dictionary<string, object> propsDict)
+                    {
+                        var filtered = new Dictionary<string, object>();
+                        foreach (var key in propertiesFilter)
+                        {
+                            if (propsDict.TryGetValue(key, out var val))
+                            {
+                                filtered[key] = val;
+                            }
+                            else
+                            {
+                                var match = propsDict.FirstOrDefault(kvp => string.Equals(kvp.Key, key, StringComparison.OrdinalIgnoreCase));
+                                if (match.Key != null)
+                                    filtered[match.Key] = match.Value;
+                            }
+                        }
+                        dataDict["properties"] = filtered;
+                    }
+                }
+
+                list.Add(data);
             }
             return list;
         }

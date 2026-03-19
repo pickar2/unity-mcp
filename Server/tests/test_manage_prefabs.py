@@ -351,5 +351,115 @@ class TestManagePrefabsComponentsParam:
         assert captured["params"]["components"] == ["MyScript"]
 
 
+class TestManagePrefabsPropertiesFilter:
+    """Tests for the properties parameter as a filter on get_info/get_hierarchy."""
+
+    def test_properties_accepts_list(self):
+        """properties should accept a list (property name filter)."""
+        sig = inspect.signature(manage_prefabs)
+        param = sig.parameters["properties"]
+        # Should accept list | dict | str | None
+        assert param.default is None
+
+    @pytest.mark.asyncio
+    async def test_properties_list_forwarded_for_hierarchy(self, monkeypatch):
+        """properties=['sizeDelta', 'anchoredPosition'] should be forwarded as a list."""
+        from tests.integration.conftest import _DummyContext
+
+        captured = {}
+
+        async def fake_send(_send_fn, _unity_instance, _command_type, params, **_kw):
+            captured["params"] = params
+            return {"success": True, "message": "ok", "data": {}}
+
+        import services.tools.manage_prefabs as mod
+
+        monkeypatch.setattr(mod, "send_with_unity_instance", fake_send)
+        monkeypatch.setattr(mod, "preflight", lambda *a, **kw: _always_none())
+
+        await manage_prefabs(
+            ctx=_DummyContext(),
+            action="get_hierarchy",
+            prefab_path="Assets/Prefabs/Test.prefab",
+            components=["RectTransform"],
+            properties=["sizeDelta", "anchoredPosition"],
+        )
+        assert captured["params"]["properties"] == ["sizeDelta", "anchoredPosition"]
+        assert captured["params"]["components"] == ["RectTransform"]
+
+    @pytest.mark.asyncio
+    async def test_properties_dict_forwarded_for_modify(self, monkeypatch):
+        """properties={'mass': 5.0} dict should be forwarded for modify_contents."""
+        from tests.integration.conftest import _DummyContext
+
+        captured = {}
+
+        async def fake_send(_send_fn, _unity_instance, _command_type, params, **_kw):
+            captured["params"] = params
+            return {"success": True, "message": "ok", "data": {}}
+
+        import services.tools.manage_prefabs as mod
+
+        monkeypatch.setattr(mod, "send_with_unity_instance", fake_send)
+        monkeypatch.setattr(mod, "preflight", lambda *a, **kw: _always_none())
+
+        await manage_prefabs(
+            ctx=_DummyContext(),
+            action="modify_contents",
+            prefab_path="Assets/Prefabs/Test.prefab",
+            component="Rigidbody",
+            properties={"mass": 5.0},
+        )
+        assert captured["params"]["properties"] == {"mass": 5.0}
+
+    @pytest.mark.asyncio
+    async def test_properties_none_not_forwarded(self, monkeypatch):
+        """properties=None should not add a properties key to params."""
+        from tests.integration.conftest import _DummyContext
+
+        captured = {}
+
+        async def fake_send(_send_fn, _unity_instance, _command_type, params, **_kw):
+            captured["params"] = params
+            return {"success": True, "message": "ok", "data": {}}
+
+        import services.tools.manage_prefabs as mod
+
+        monkeypatch.setattr(mod, "send_with_unity_instance", fake_send)
+        monkeypatch.setattr(mod, "preflight", lambda *a, **kw: _always_none())
+
+        await manage_prefabs(
+            ctx=_DummyContext(),
+            action="get_hierarchy",
+            prefab_path="Assets/Prefabs/Test.prefab",
+        )
+        assert "properties" not in captured["params"]
+
+    @pytest.mark.asyncio
+    async def test_properties_list_with_get_info(self, monkeypatch):
+        """properties list should also work with get_info action."""
+        from tests.integration.conftest import _DummyContext
+
+        captured = {}
+
+        async def fake_send(_send_fn, _unity_instance, _command_type, params, **_kw):
+            captured["params"] = params
+            return {"success": True, "message": "ok", "data": {}}
+
+        import services.tools.manage_prefabs as mod
+
+        monkeypatch.setattr(mod, "send_with_unity_instance", fake_send)
+        monkeypatch.setattr(mod, "preflight", lambda *a, **kw: _always_none())
+
+        await manage_prefabs(
+            ctx=_DummyContext(),
+            action="get_info",
+            prefab_path="Assets/Prefabs/Test.prefab",
+            components=["RectTransform"],
+            properties=["sizeDelta"],
+        )
+        assert captured["params"]["properties"] == ["sizeDelta"]
+
+
 async def _always_none():
     return None

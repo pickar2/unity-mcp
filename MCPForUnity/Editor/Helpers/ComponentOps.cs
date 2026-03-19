@@ -617,7 +617,16 @@ namespace MCPForUnity.Editor.Helpers
                     return true;
                 }
 
-                error = "Object reference must contain 'instanceID', 'guid', or 'path'.";
+                // Fallback: delegate to ObjectResolver for {"find": "..."} and other formats
+                var refType = prop.objectReferenceValue != null ? prop.objectReferenceValue.GetType() : typeof(UnityEngine.Object);
+                var fallbackResolved = ObjectResolver.Resolve(jObj, refType);
+                if (fallbackResolved != null)
+                {
+                    prop.objectReferenceValue = fallbackResolved;
+                    return true;
+                }
+
+                error = "Object reference must contain 'instanceID', 'guid', 'path', or 'find'.";
                 return false;
             }
 

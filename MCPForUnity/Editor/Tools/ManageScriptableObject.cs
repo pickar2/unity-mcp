@@ -73,6 +73,12 @@ namespace MCPForUnity.Editor.Tools
                 return HandleGet(@params);
             }
 
+            // Block asset-modifying actions in play mode (can trigger domain reload)
+            if (EditorApplication.isPlaying)
+            {
+                return new ErrorResponse($"Cannot {action} ScriptableObjects in play mode. Exit play mode first.");
+            }
+
             if (IsCreateAction(action))
             {
                 return HandleCreate(@params);

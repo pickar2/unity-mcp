@@ -262,30 +262,56 @@ namespace MCPForUnity.Editor.Helpers
             if (componentType == typeof(Transform))
             {
                 Transform tr = c as Transform;
-                // McpLog.Info($"[GetComponentData] Manually serializing Transform (ID: {tr.GetInstanceID()})");
                 return new Dictionary<string, object>
                 {
                     { "typeName", componentType.FullName },
                     { "instanceID", tr.GetInstanceID() },
-                    // Manually extract known-safe properties. Avoid Quaternion 'rotation' and 'lossyScale'.
-                    { "position", CreateTokenFromValue(tr.position, typeof(Vector3))?.ToObject<object>() ?? new JObject() },
-                    { "localPosition", CreateTokenFromValue(tr.localPosition, typeof(Vector3))?.ToObject<object>() ?? new JObject() },
-                    { "eulerAngles", CreateTokenFromValue(tr.eulerAngles, typeof(Vector3))?.ToObject<object>() ?? new JObject() }, // Use Euler angles
-                    { "localEulerAngles", CreateTokenFromValue(tr.localEulerAngles, typeof(Vector3))?.ToObject<object>() ?? new JObject() },
-                    { "localScale", CreateTokenFromValue(tr.localScale, typeof(Vector3))?.ToObject<object>() ?? new JObject() },
-                    { "right", CreateTokenFromValue(tr.right, typeof(Vector3))?.ToObject<object>() ?? new JObject() },
-                    { "up", CreateTokenFromValue(tr.up, typeof(Vector3))?.ToObject<object>() ?? new JObject() },
-                    { "forward", CreateTokenFromValue(tr.forward, typeof(Vector3))?.ToObject<object>() ?? new JObject() },
-                    { "parentInstanceID", tr.parent?.gameObject.GetInstanceID() ?? 0 },
-                    { "rootInstanceID", tr.root?.gameObject.GetInstanceID() ?? 0 },
-                    { "childCount", tr.childCount },
-                    // Include standard Object/Component properties
-                    { "name", tr.name },
-                    { "tag", tr.tag },
-                    { "gameObjectInstanceID", tr.gameObject?.GetInstanceID() ?? 0 }
+                    { "properties", new Dictionary<string, object>
+                        {
+                            { "position", CreateTokenFromValue(tr.position, typeof(Vector3))?.ToObject<object>() ?? new JObject() },
+                            { "localPosition", CreateTokenFromValue(tr.localPosition, typeof(Vector3))?.ToObject<object>() ?? new JObject() },
+                            { "eulerAngles", CreateTokenFromValue(tr.eulerAngles, typeof(Vector3))?.ToObject<object>() ?? new JObject() },
+                            { "localEulerAngles", CreateTokenFromValue(tr.localEulerAngles, typeof(Vector3))?.ToObject<object>() ?? new JObject() },
+                            { "localScale", CreateTokenFromValue(tr.localScale, typeof(Vector3))?.ToObject<object>() ?? new JObject() },
+                            { "right", CreateTokenFromValue(tr.right, typeof(Vector3))?.ToObject<object>() ?? new JObject() },
+                            { "up", CreateTokenFromValue(tr.up, typeof(Vector3))?.ToObject<object>() ?? new JObject() },
+                            { "forward", CreateTokenFromValue(tr.forward, typeof(Vector3))?.ToObject<object>() ?? new JObject() },
+                            { "parentInstanceID", tr.parent?.gameObject.GetInstanceID() ?? 0 },
+                            { "rootInstanceID", tr.root?.gameObject.GetInstanceID() ?? 0 },
+                            { "childCount", tr.childCount },
+                        }
+                    }
                 };
             }
             // --- End Special handling for Transform --- 
+
+            // --- Special handling for RectTransform (extends Transform with UI-specific properties) ---
+            if (componentType == typeof(RectTransform))
+            {
+                RectTransform rt = c as RectTransform;
+                return new Dictionary<string, object>
+                {
+                    { "typeName", componentType.FullName },
+                    { "instanceID", rt.GetInstanceID() },
+                    { "properties", new Dictionary<string, object>
+                        {
+                            { "anchoredPosition", CreateTokenFromValue(rt.anchoredPosition, typeof(Vector2))?.ToObject<object>() ?? new JObject() },
+                            { "sizeDelta", CreateTokenFromValue(rt.sizeDelta, typeof(Vector2))?.ToObject<object>() ?? new JObject() },
+                            { "anchorMin", CreateTokenFromValue(rt.anchorMin, typeof(Vector2))?.ToObject<object>() ?? new JObject() },
+                            { "anchorMax", CreateTokenFromValue(rt.anchorMax, typeof(Vector2))?.ToObject<object>() ?? new JObject() },
+                            { "pivot", CreateTokenFromValue(rt.pivot, typeof(Vector2))?.ToObject<object>() ?? new JObject() },
+                            { "offsetMin", CreateTokenFromValue(rt.offsetMin, typeof(Vector2))?.ToObject<object>() ?? new JObject() },
+                            { "offsetMax", CreateTokenFromValue(rt.offsetMax, typeof(Vector2))?.ToObject<object>() ?? new JObject() },
+                            { "localPosition", CreateTokenFromValue(rt.localPosition, typeof(Vector3))?.ToObject<object>() ?? new JObject() },
+                            { "localEulerAngles", CreateTokenFromValue(rt.localEulerAngles, typeof(Vector3))?.ToObject<object>() ?? new JObject() },
+                            { "localScale", CreateTokenFromValue(rt.localScale, typeof(Vector3))?.ToObject<object>() ?? new JObject() },
+                            { "parentInstanceID", rt.parent?.gameObject.GetInstanceID() ?? 0 },
+                            { "childCount", rt.childCount },
+                        }
+                    }
+                };
+            }
+            // --- End Special handling for RectTransform ---
 
             // --- Special handling for Camera to avoid matrix-related crashes ---
             if (componentType == typeof(Camera))
@@ -522,7 +548,7 @@ namespace MCPForUnity.Editor.Helpers
                      propName == "cameraToWorldMatrix"))
                     skipProperty = true;
 
-                if (componentType == typeof(Transform) &&
+                if (typeof(Transform).IsAssignableFrom(componentType) &&
                     (propName == "lossyScale" || propName == "rotation" ||
                      propName == "worldToLocalMatrix" || propName == "localToWorldMatrix"))
                     skipProperty = true;
@@ -598,6 +624,17 @@ namespace MCPForUnity.Editor.Helpers
                         (InternalPropertyNames.Contains(fieldInfo.Name) ||
                          NoiseBaseTypes.Contains(fieldInfo.DeclaringType)))
                         continue;
+
+                    // Skip backing fields (m_Foo) when the corresponding property (foo/Foo)
+                    // is already serialized — avoids noisy duplication like minWidth + m_MinWidth.
+                    if (shouldFilterInternal && fieldInfo.Name.StartsWith("m_"))
+                    {
+                        string stripped = fieldInfo.Name.Substring(2);
+                        // Check camelCase (m_MinWidth → minWidth) and PascalCase (m_MinWidth → MinWidth)
+                        string camel = char.ToLowerInvariant(stripped[0]) + stripped.Substring(1);
+                        if (serializablePropertiesOutput.ContainsKey(camel) || serializablePropertiesOutput.ContainsKey(stripped))
+                            continue;
+                    }
 
                     try
                     {

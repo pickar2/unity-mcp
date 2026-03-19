@@ -26,6 +26,7 @@ REQUIRED_PARAMS = {
 Actions: get_info, get_hierarchy, create_from_gameobject, modify_contents.
 get_hierarchy is paginated (default 200 items). Use next_cursor from response to fetch more pages.
 Use components=true with get_info/get_hierarchy to include serialized field values, or components=["TypeA","TypeB"] to filter.
+Use properties=["fieldA","fieldB"] with get_info/get_hierarchy to select specific fields per component (e.g. ["sizeDelta", "anchoredPosition"]).
 Use modify_contents for headless prefab editing - ideal for automated workflows.
 Use create_child parameter with modify_contents to add child GameObjects to a prefab (single object or array for batch creation in one save).
 Use component + properties with modify_contents to set fields on a single component (e.g. component="Rigidbody", properties={"mass": 5.0}).
@@ -36,6 +37,7 @@ Examples:
   manage_prefabs(action="get_info", prefab_path="Assets/Prefabs/Player.prefab")
   manage_prefabs(action="get_hierarchy", prefab_path="Assets/Prefabs/Player.prefab")
   manage_prefabs(action="get_hierarchy", prefab_path="Assets/Prefabs/Player.prefab", components=["MeshRenderer"], page_size=50)
+  manage_prefabs(action="get_hierarchy", prefab_path="Assets/Prefabs/Player.prefab", components=["RectTransform"], properties=["sizeDelta", "anchoredPosition"])
   manage_prefabs(action="get_hierarchy", prefab_path="...", cursor=200)  # fetch next page using next_cursor from previous response
   manage_prefabs(action="create_from_gameobject", target="Player", prefab_path="Assets/Prefabs/Player.prefab")
   manage_prefabs(action="modify_contents", prefab_path="Assets/Prefabs/Player.prefab", target="Body", position=[0,1,0])
@@ -128,10 +130,12 @@ async def manage_prefabs(
     ]
     | None = None,
     properties: Annotated[
-        dict[str, Any],
-        'Property values to set on the specified component in modify_contents (use with \'component\'). Example: {"mass": 5.0, "useGravity": false}.',
-    ]
-    | None = None,
+        list | dict | str | None,
+        "For get_info/get_hierarchy: list of property names to include per component "
+        '(e.g. ["sizeDelta", "anchoredPosition"]). '
+        "For modify_contents: dict of property values to set on the specified component "
+        '(use with \'component\'). Example: {"mass": 5.0, "useGravity": false}.',
+    ] = None,
     component_properties: Annotated[
         dict[str, dict[str, Any]],
         'Set properties on multiple components in modify_contents. Keys are component type names, values are dicts of property name to value. Example: {"Rigidbody": {"mass": 5.0}, "MyScript": {"health": 100}}. Supports object references via {"guid": "..."}, {"path": "Assets/..."}, or {"instanceID": 123}.',
@@ -256,6 +260,10 @@ async def manage_prefabs(
         if component is not None:
             params["component"] = component
         if properties is not None:
+            # Ensure JSON-string form (e.g. '["sizeDelta"]') is parsed to a native list
+            # so the C# side always receives a JSON array, not a quoted string.
+            if isinstance(properties, str):
+                properties = parse_json_payload(properties, properties)
             params["properties"] = properties
         if component_properties is not None:
             params["componentProperties"] = component_properties
