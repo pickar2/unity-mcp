@@ -7,11 +7,4 @@
       "enabled": true
     }
   },
-  "lsp": {
-    "csharp": {
-      "command": ["C:/Dev/trojanda/csharp_treesitter/src/Crai.Lsp/bin/Debug/net10.0/Crai.Lsp.exe"],
-      "extensions": [".cs"]
-    }
-  },
-  "plugin": ["@ex-machina/opencode-anthropic-auth"]
 }
