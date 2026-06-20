@@ -48,10 +48,15 @@ namespace MCPForUnity.Editor.Helpers
 
         /// <summary>
         /// Returns the normalized local HTTP base URL (always reads local pref).
+        /// Resolution order: per-project config override (if present and valid),
+        /// then the global EditorPref, then the hardcoded default. Absent config
+        /// file preserves the pre-change single-project behavior.
         /// </summary>
         public static string GetLocalBaseUrl()
         {
-            string stored = EditorPrefs.GetString(LocalPrefKey, DefaultLocalBaseUrl);
+            string stored = ProjectMcpConfig.TryGetLocalBaseUrl(out string projectOverride)
+                ? projectOverride
+                : EditorPrefs.GetString(LocalPrefKey, DefaultLocalBaseUrl);
             return NormalizeBaseUrl(stored, DefaultLocalBaseUrl, remoteScope: false);
         }
 
