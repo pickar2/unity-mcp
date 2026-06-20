@@ -53,6 +53,16 @@ namespace MCPForUnity.Editor.Helpers
         }
 
         /// <summary>
+        /// Get optional long parameter.
+        /// </summary>
+        public long? GetLong(string key, long? defaultValue = null)
+        {
+            var str = GetString(key);
+            if (string.IsNullOrEmpty(str)) return defaultValue;
+            return long.TryParse(str, out var result) ? result : defaultValue;
+        }
+
+        /// <summary>
         /// Get optional bool parameter.
         /// Supports both snake_case and camelCase automatically.
         /// </summary>

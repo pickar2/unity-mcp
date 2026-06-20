@@ -22,86 +22,169 @@ async def test_read_console_full_default(monkeypatch):
 
     captured = {}
 
-    async def fake_send(_cmd, params, **_kwargs):
+    async def fake_send(_send_fn, _unity_instance, _command_type, params, **_kwargs):
         captured["params"] = params
         return {
             "success": True,
-            "data": {"lines": [{"level": "error", "message": "oops", "stacktrace": "trace", "time": "t"}]},
+            "data": {
+                "entries": [
+                    {
+                        "sequenceId": 1,
+                        "timestamp": "2026-01-01T00:00:00Z",
+                        "type": "error",
+                        "message": "oops",
+                        "stackTrace": None,
+                    }
+                ],
+                "latestSequenceId": 1,
+            },
         }
 
-    # Patch the send_command_with_retry function in the tools module
-    import services.tools.read_console
+    import services.tools.read_console as read_console_mod
     monkeypatch.setattr(
-        services.tools.read_console,
-        "async_send_command_with_retry",
+        read_console_mod,
+        "send_with_unity_instance",
         fake_send,
     )
 
     resp = await read_console(ctx=DummyContext(), action="get", count=10)
-    assert resp == {
-        "success": True,
-        "data": {"lines": [{"level": "error", "message": "oops", "time": "t"}]},
-    }
+    assert resp["success"] is True
+    assert resp["data"]["entries"][0]["message"] == "oops"
     assert captured["params"]["count"] == 10
     assert captured["params"]["includeStacktrace"] is False
 
 
 @pytest.mark.asyncio
-async def test_read_console_truncated(monkeypatch):
+async def test_read_console_passes_include_stacktrace(monkeypatch):
+    """Stacktrace inclusion is forwarded to C#; Python does not strip."""
     tools = setup_console_tools()
     read_console = tools["read_console"]
 
     captured = {}
 
-    async def fake_send(_cmd, params, **_kwargs):
+    async def fake_send(_send_fn, _unity_instance, _command_type, params, **_kwargs):
         captured["params"] = params
         return {
             "success": True,
-            "data": {"lines": [{"level": "error", "message": "oops", "stacktrace": "trace"}]},
+            "data": {
+                "entries": [
+                    {
+                        "sequenceId": 1,
+                        "timestamp": "2026-01-01T00:00:00Z",
+                        "type": "error",
+                        "message": "oops",
+                        "stackTrace": "at Foo.Bar()",
+                    }
+                ],
+                "latestSequenceId": 1,
+            },
         }
 
-    # Patch the send_command_with_retry function in the tools module
-    import services.tools.read_console
+    import services.tools.read_console as read_console_mod
     monkeypatch.setattr(
-        services.tools.read_console,
-        "async_send_command_with_retry",
+        read_console_mod,
+        "send_with_unity_instance",
         fake_send,
     )
 
+    # With include_stacktrace=True, the param is forwarded to C#; Python does not strip
+    resp = await read_console(ctx=DummyContext(), action="get", count=10, include_stacktrace=True)
+    assert resp["success"] is True
+    assert captured["params"]["includeStacktrace"] is True
+    # The response is passed through as-is from C#
+    assert resp["data"]["entries"][0]["stackTrace"] == "at Foo.Bar()"
+
+    # With include_stacktrace=False, the param is forwarded to C#; Python does not strip
+    captured.clear()
     resp = await read_console(ctx=DummyContext(), action="get", count=10, include_stacktrace=False)
-    assert resp == {"success": True, "data": {
-        "lines": [{"level": "error", "message": "oops"}]}}
+    assert resp["success"] is True
     assert captured["params"]["includeStacktrace"] is False
 
 
 @pytest.mark.asyncio
 async def test_read_console_default_count(monkeypatch):
-    """Test that read_console defaults to count=10 when not specified."""
+    """Test that read_console defaults to count=100 when not specified."""
     tools = setup_console_tools()
     read_console = tools["read_console"]
 
     captured = {}
 
-    async def fake_send(_cmd, params, **_kwargs):
+    async def fake_send(_send_fn, _unity_instance, _command_type, params, **_kwargs):
         captured["params"] = params
         return {
             "success": True,
-            "data": {"lines": [{"level": "error", "message": f"error {i}"} for i in range(15)]},
+            "data": {"entries": [], "latestSequenceId": 0},
         }
 
-    # Patch the send_command_with_retry function in the tools module
-    import services.tools.read_console
+    import services.tools.read_console as read_console_mod
     monkeypatch.setattr(
-        services.tools.read_console,
-        "async_send_command_with_retry",
+        read_console_mod,
+        "send_with_unity_instance",
         fake_send,
     )
 
-    # Call without specifying count - should default to 10
+    # Call without specifying count - should default to 100
     resp = await read_console(ctx=DummyContext(), action="get")
     assert resp["success"] is True
-    # Verify that the default count of 10 was used
-    assert captured["params"]["count"] == 10
+    assert captured["params"]["count"] == 100
+
+
+@pytest.mark.asyncio
+async def test_read_console_default_count_not_applied_when_paging(monkeypatch):
+    """Test that default count is not applied when page_size is specified."""
+    tools = setup_console_tools()
+    read_console = tools["read_console"]
+
+    captured = {}
+
+    async def fake_send(_send_fn, _unity_instance, _command_type, params, **_kwargs):
+        captured["params"] = params
+        return {
+            "success": True,
+            "data": {"entries": [], "latestSequenceId": 0},
+        }
+
+    import services.tools.read_console as read_console_mod
+    monkeypatch.setattr(
+        read_console_mod,
+        "send_with_unity_instance",
+        fake_send,
+    )
+
+    # With page_size, count should NOT be defaulted
+    resp = await read_console(ctx=DummyContext(), action="get", page_size=20)
+    assert resp["success"] is True
+    assert "count" not in captured["params"]
+    assert captured["params"]["pageSize"] == 20
+
+
+@pytest.mark.asyncio
+async def test_read_console_default_count_not_applied_when_count_only(monkeypatch):
+    """Test that default count is not applied when count_only is specified."""
+    tools = setup_console_tools()
+    read_console = tools["read_console"]
+
+    captured = {}
+
+    async def fake_send(_send_fn, _unity_instance, _command_type, params, **_kwargs):
+        captured["params"] = params
+        return {
+            "success": True,
+            "data": {"error": 0, "warning": 0, "log": 0, "total": 0, "latestSequenceId": 0},
+        }
+
+    import services.tools.read_console as read_console_mod
+    monkeypatch.setattr(
+        read_console_mod,
+        "send_with_unity_instance",
+        fake_send,
+    )
+
+    # With count_only, count should NOT be defaulted
+    resp = await read_console(ctx=DummyContext(), action="get", count_only=True)
+    assert resp["success"] is True
+    assert "count" not in captured["params"]
+    assert captured["params"]["countOnly"] is True
 
 
 @pytest.mark.asyncio
@@ -112,63 +195,114 @@ async def test_read_console_paging(monkeypatch):
 
     captured = {}
 
-    async def fake_send(_cmd, params, **_kwargs):
+    async def fake_send(_send_fn, _unity_instance, _command_type, params, **_kwargs):
         captured["params"] = params
-        # Simulate Unity returning paging info matching C# structure
-        page_size = params.get("pageSize", 10)
-        cursor = params.get("cursor", 0)
-        # Simulate 25 total messages
-        all_messages = [{"level": "error", "message": f"error {i}"} for i in range(25)]
-        
-        # Return a page of results
-        start = cursor
-        end = min(start + page_size, len(all_messages))
-        messages = all_messages[start:end]
-        
+        page_size = params.get("pageSize", 50)
+        cursor_val = params.get("cursor", 0)
+        all_entries = [
+            {
+                "sequenceId": i,
+                "timestamp": f"2026-01-01T00:00:{i:02d}Z",
+                "type": "error",
+                "message": f"error {i}",
+                "stackTrace": None,
+            }
+            for i in range(25)
+        ]
+        start = cursor_val
+        end = min(start + page_size, len(all_entries))
+        entries = all_entries[start:end]
+
         return {
             "success": True,
             "data": {
-                "items": messages,
-                "cursor": cursor,
+                "entries": entries,
+                "cursor": cursor_val,
                 "pageSize": page_size,
-                "nextCursor": str(end) if end < len(all_messages) else None,
-                "truncated": end < len(all_messages),
-                "total": len(all_messages),
+                "nextCursor": end if end < len(all_entries) else None,
+                "totalMatches": len(all_entries),
+                "hasMore": end < len(all_entries),
+                "latestSequenceId": 24,
             },
         }
 
-    # Patch the send_command_with_retry function in the tools module
-    import services.tools.read_console
+    import services.tools.read_console as read_console_mod
     monkeypatch.setattr(
-        services.tools.read_console,
-        "async_send_command_with_retry",
+        read_console_mod,
+        "send_with_unity_instance",
         fake_send,
     )
 
-    # First page - get first 5 entries
+    # First page
     resp = await read_console(ctx=DummyContext(), action="get", page_size=5, cursor=0)
     assert resp["success"] is True
     assert captured["params"]["pageSize"] == 5
     assert captured["params"]["cursor"] == 0
-    assert len(resp["data"]["items"]) == 5
-    assert resp["data"]["truncated"] is True
-    assert resp["data"]["nextCursor"] == "5"
-    assert resp["data"]["total"] == 25
-    
-    # Second page - get next 5 entries
-    resp = await read_console(ctx=DummyContext(), action="get", page_size=5, cursor=5)
-    assert resp["success"] is True
-    assert captured["params"]["cursor"] == 5
-    assert len(resp["data"]["items"]) == 5
-    assert resp["data"]["truncated"] is True
-    assert resp["data"]["nextCursor"] == "10"
-    
-    # Last page - get remaining entries
+    assert len(resp["data"]["entries"]) == 5
+    assert resp["data"]["hasMore"] is True
+    assert resp["data"]["nextCursor"] == 5
+
+    # Last page
     resp = await read_console(ctx=DummyContext(), action="get", page_size=5, cursor=20)
     assert resp["success"] is True
-    assert len(resp["data"]["items"]) == 5
-    assert resp["data"]["truncated"] is False
+    assert len(resp["data"]["entries"]) == 5
+    assert resp["data"]["hasMore"] is False
     assert resp["data"]["nextCursor"] is None
+
+
+@pytest.mark.asyncio
+async def test_read_console_since_sequence_id(monkeypatch):
+    """Test that since_sequence_id is forwarded to C# as sinceSequenceId."""
+    tools = setup_console_tools()
+    read_console = tools["read_console"]
+
+    captured = {}
+
+    async def fake_send(_send_fn, _unity_instance, _command_type, params, **_kwargs):
+        captured["params"] = params
+        return {
+            "success": True,
+            "data": {"entries": [], "latestSequenceId": 42},
+        }
+
+    import services.tools.read_console as read_console_mod
+    monkeypatch.setattr(
+        read_console_mod,
+        "send_with_unity_instance",
+        fake_send,
+    )
+
+    resp = await read_console(ctx=DummyContext(), action="get", since_sequence_id=42)
+    assert resp["success"] is True
+    assert captured["params"]["sinceSequenceId"] == 42
+
+
+@pytest.mark.asyncio
+async def test_read_console_count_only(monkeypatch):
+    """Test that count_only mode works."""
+    tools = setup_console_tools()
+    read_console = tools["read_console"]
+
+    captured = {}
+
+    async def fake_send(_send_fn, _unity_instance, _command_type, params, **_kwargs):
+        captured["params"] = params
+        return {
+            "success": True,
+            "data": {"error": 3, "warning": 5, "log": 10, "total": 18, "latestSequenceId": 42},
+        }
+
+    import services.tools.read_console as read_console_mod
+    monkeypatch.setattr(
+        read_console_mod,
+        "send_with_unity_instance",
+        fake_send,
+    )
+
+    resp = await read_console(ctx=DummyContext(), action="get", count_only=True)
+    assert resp["success"] is True
+    assert captured["params"]["countOnly"] is True
+    assert resp["data"]["total"] == 18
 
 
 @pytest.mark.asyncio
@@ -179,18 +313,18 @@ async def test_read_console_types_json_string(monkeypatch):
 
     captured = {}
 
-    async def fake_send_with_unity_instance(_send_fn, _unity_instance, _command_type, params, **_kwargs):
+    async def fake_send(_send_fn, _unity_instance, _command_type, params, **_kwargs):
         captured["params"] = params
         return {
             "success": True,
-            "data": {"lines": [{"level": "error", "message": "test error"}]},
+            "data": {"entries": [], "latestSequenceId": 0},
         }
 
     import services.tools.read_console as read_console_mod
     monkeypatch.setattr(
         read_console_mod,
         "send_with_unity_instance",
-        fake_send_with_unity_instance,
+        fake_send,
     )
 
     # Test with types as JSON string (the problematic case from issue #561)
@@ -199,7 +333,7 @@ async def test_read_console_types_json_string(monkeypatch):
     # Verify types was parsed correctly and sent as a list
     assert isinstance(captured["params"]["types"], list)
     assert captured["params"]["types"] == ["error", "warning", "all"]
-    
+
     # Test case normalization to lowercase
     captured.clear()
     resp = await read_console(ctx=DummyContext(), action="get", types='["ERROR", "Warning", "LOG"]')
@@ -222,15 +356,15 @@ async def test_read_console_types_validation(monkeypatch):
 
     captured = {}
 
-    async def fake_send_with_unity_instance(_send_fn, _unity_instance, _command_type, params, **_kwargs):
+    async def fake_send(_send_fn, _unity_instance, _command_type, params, **_kwargs):
         captured["params"] = params
-        return {"success": True, "data": {"lines": []}}
+        return {"success": True, "data": {"entries": []}}
 
     import services.tools.read_console as read_console_mod
     monkeypatch.setattr(
         read_console_mod,
         "send_with_unity_instance",
-        fake_send_with_unity_instance,
+        fake_send,
     )
 
     # Invalid entry in list should return a clear error and not send.
@@ -246,3 +380,126 @@ async def test_read_console_types_validation(monkeypatch):
     assert resp["success"] is False
     assert "types entries must be strings" in resp["message"]
     assert captured == {}
+
+
+@pytest.mark.asyncio
+async def test_read_console_filter_mutual_exclusivity(monkeypatch):
+    """Test that filter_text and filter_regex are mutually exclusive."""
+    tools = setup_console_tools()
+    read_console = tools["read_console"]
+
+    captured = {}
+
+    async def fake_send(_send_fn, _unity_instance, _command_type, params, **_kwargs):
+        captured["params"] = params
+        return {"success": True, "data": {"entries": []}}
+
+    import services.tools.read_console as read_console_mod
+    monkeypatch.setattr(
+        read_console_mod,
+        "send_with_unity_instance",
+        fake_send,
+    )
+
+    resp = await read_console(ctx=DummyContext(), action="get", filter_text="foo", filter_regex="bar")
+    assert resp["success"] is False
+    assert "Cannot use both" in resp["message"]
+    # Should not have been sent
+    assert captured == {}
+
+
+@pytest.mark.asyncio
+async def test_read_console_filter_regex_forwarded(monkeypatch):
+    """Test that filter_regex is forwarded to C# as filterRegex."""
+    tools = setup_console_tools()
+    read_console = tools["read_console"]
+
+    captured = {}
+
+    async def fake_send(_send_fn, _unity_instance, _command_type, params, **_kwargs):
+        captured["params"] = params
+        return {"success": True, "data": {"entries": [], "latestSequenceId": 0}}
+
+    import services.tools.read_console as read_console_mod
+    monkeypatch.setattr(
+        read_console_mod,
+        "send_with_unity_instance",
+        fake_send,
+    )
+
+    resp = await read_console(
+        ctx=DummyContext(),
+        action="get",
+        filter_regex="NullRef.*Exception",
+    )
+    assert resp["success"] is True
+    assert captured["params"]["filterRegex"] == "NullRef.*Exception"
+    assert "filterText" not in captured["params"]
+
+
+@pytest.mark.asyncio
+async def test_read_console_filter_text_forwarded(monkeypatch):
+    """Test that filter_text is forwarded to C# as filterText."""
+    tools = setup_console_tools()
+    read_console = tools["read_console"]
+
+    captured = {}
+
+    async def fake_send(_send_fn, _unity_instance, _command_type, params, **_kwargs):
+        captured["params"] = params
+        return {"success": True, "data": {"entries": [], "latestSequenceId": 0}}
+
+    import services.tools.read_console as read_console_mod
+    monkeypatch.setattr(
+        read_console_mod,
+        "send_with_unity_instance",
+        fake_send,
+    )
+
+    resp = await read_console(
+        ctx=DummyContext(),
+        action="get",
+        filter_text="NullReference",
+    )
+    assert resp["success"] is True
+    assert captured["params"]["filterText"] == "NullReference"
+    assert "filterRegex" not in captured["params"]
+
+
+@pytest.mark.asyncio
+async def test_read_console_clear_action(monkeypatch):
+    """Test that clear action works."""
+    tools = setup_console_tools()
+    read_console = tools["read_console"]
+
+    captured = {}
+
+    async def fake_send(_send_fn, _unity_instance, _command_type, params, **_kwargs):
+        captured["params"] = params
+        return {"success": True, "message": "Console cleared successfully."}
+
+    import services.tools.read_console as read_console_mod
+    monkeypatch.setattr(
+        read_console_mod,
+        "send_with_unity_instance",
+        fake_send,
+    )
+
+    resp = await read_console(ctx=DummyContext(), action="clear")
+    assert resp["success"] is True
+    assert captured["params"]["action"] == "clear"
+
+
+@pytest.mark.asyncio
+async def test_read_console_preserves_format_param(monkeypatch):
+    """The format parameter is accepted for backwards compatibility (upstream API surface).
+
+    The C# side ignores it - entries are always structured - but the Python signature
+    keeps it so callers that historically passed format= do not break.
+    """
+    import inspect
+    import services.tools.read_console as read_console_mod
+
+    sig = inspect.signature(read_console_mod.read_console)
+    param_names = list(sig.parameters.keys())
+    assert "format" in param_names, "format parameter must remain in signature for backwards compatibility"
