@@ -26,7 +26,8 @@ namespace MCPForUnity.Editor.Helpers
             ByLayer,
             ByComponent,
             ByPath,
-            ById
+            ById,
+            ByIdOrNameOrPath
         }
 
         /// <summary>
@@ -45,6 +46,7 @@ namespace MCPForUnity.Editor.Helpers
                 "by_component" => SearchMethod.ByComponent,
                 "by_path" => SearchMethod.ByPath,
                 "by_id" => SearchMethod.ById,
+                "by_id_or_name_or_path" => SearchMethod.ByIdOrNameOrPath,
                 _ => SearchMethod.ByName
             };
         }
@@ -138,6 +140,25 @@ namespace MCPForUnity.Editor.Helpers
 
                 case SearchMethod.ByComponent:
                     results.AddRange(SearchByComponent(searchTerm, includeInactive, maxResults));
+                    break;
+
+                case SearchMethod.ByIdOrNameOrPath:
+                    // Composite: try ID first, then path, then name
+                    if (int.TryParse(searchTerm, out int compositeId))
+                    {
+                        var byIdObj = ResolveInstanceID(compositeId) as GameObject;
+                        if (byIdObj != null && (includeInactive || byIdObj.activeInHierarchy))
+                        {
+                            results.Add(compositeId);
+                            break;
+                        }
+                    }
+                    if (searchTerm.Contains("/"))
+                    {
+                        results.AddRange(SearchByPath(searchTerm, includeInactive));
+                        break;
+                    }
+                    results.AddRange(SearchByName(searchTerm, includeInactive, maxResults));
                     break;
             }
 

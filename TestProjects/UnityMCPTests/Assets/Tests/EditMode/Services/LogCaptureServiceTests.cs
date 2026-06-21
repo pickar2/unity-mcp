@@ -1,8 +1,10 @@
 using System;
+using System.Text.RegularExpressions;
 using NUnit.Framework;
 using MCPForUnity.Editor.Services;
 using MCPForUnity.Editor.Helpers;
 using UnityEngine;
+using UnityEngine.TestTools;
 
 namespace MCPForUnityTests.Editor.Services
 {
@@ -44,6 +46,7 @@ namespace MCPForUnityTests.Editor.Services
         public void CapturesDebugError()
         {
             string uniqueMsg = $"Error-{Guid.NewGuid()}";
+            LogAssert.Expect(LogType.Error, new Regex(Regex.Escape(uniqueMsg)));
             Debug.LogError(uniqueMsg);
 
             var entries = LogCaptureService.Query(types: new[] { LogType.Error });

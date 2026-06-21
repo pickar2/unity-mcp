@@ -71,18 +71,12 @@ def _split_uri(uri: str) -> tuple[str, str]:
 @mcp_for_unity_tool(
     unity_target="manage_script",
     description=(
-        """Apply small text edits to a C# script identified by URI.
-    IMPORTANT: This tool replaces EXACT character positions. Always verify content at target lines/columns BEFORE editing!
-    RECOMMENDED WORKFLOW:
-        1. First call resources/read with start_line/line_count to verify exact content
-        2. Count columns carefully (or use find_in_file to locate patterns)
-        3. Apply your edit with precise coordinates
-        4. Consider script_apply_edits with anchors for safer pattern-based replacements
-    Notes:
-        - For method/class operations, use script_apply_edits (safer, structured edits)
-        - For pattern-based replacements, consider anchor operations in script_apply_edits
-        - Lines, columns are 1-indexed
-        - Tabs count as 1 column"""
+        """Apply small text edits to a C# script at exact character positions.
+
+IMPORTANT: Verify content at target lines/columns BEFORE editing!
+Workflow: 1) Read file to verify content, 2) Use find_in_file to locate patterns, 3) Apply edit.
+For method/class operations, prefer script_apply_edits (safer, structured).
+Lines/columns are 1-indexed. Tabs count as 1 column."""
     ),
     annotations=ToolAnnotations(
         title="Apply Text Edits",
@@ -476,7 +470,7 @@ async def delete_script(
 
 @mcp_for_unity_tool(
     unity_target="manage_script",
-    description="Validate a C# script and return diagnostics.",
+    description="Validate a C# script and return diagnostics (warnings, errors).",
     annotations=ToolAnnotations(
         title="Validate Script",
         readOnlyHint=True,
@@ -523,7 +517,7 @@ async def validate_script(
 
 
 @mcp_for_unity_tool(
-    description="Compatibility router for legacy script operations. Prefer apply_text_edits (ranges) or script_apply_edits (structured) for edits. Read-only action: read. Modifying actions: create, delete.",
+    description="Legacy script operations: create, read, delete. Prefer apply_text_edits or script_apply_edits for edits.",
     annotations=ToolAnnotations(
         title="Manage Script",
         destructiveHint=True,
@@ -616,12 +610,7 @@ async def manage_script(
     unity_target=None,
     group=None,
     description=(
-        """Get manage_script capabilities (supported ops, limits, and guards).
-    Returns:
-        - ops: list of supported structured ops
-        - text_ops: list of supported text ops
-        - max_edit_payload_bytes: server edit payload cap
-        - guards: header/using guard enabled flag"""
+        """Get manage_script capabilities: supported ops, limits, guards."""
     ),
     annotations=ToolAnnotations(
         title="Manage Script Capabilities",
@@ -654,7 +643,7 @@ async def manage_script_capabilities(ctx: Context) -> dict[str, Any]:
 
 @mcp_for_unity_tool(
     unity_target="manage_script",
-    description="Get SHA256 and basic metadata for a Unity C# script without returning file contents. Requires uri (script path under Assets/ or mcpforunity://path/Assets/... or file://...).",
+    description="Get SHA256 and metadata for a C# script without returning contents.",
     annotations=ToolAnnotations(
         title="Get SHA",
         readOnlyHint=True,

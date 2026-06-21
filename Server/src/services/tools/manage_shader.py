@@ -12,7 +12,7 @@ from transport.legacy.unity_connection import async_send_command_with_retry
 
 @mcp_for_unity_tool(
     group="vfx",
-    description="Manages shader scripts in Unity (create, read, update, delete). Read-only action: read. Modifying actions: create, update, delete.",
+    description="Manage shader scripts in Unity: create, read, update, delete.",
     annotations=ToolAnnotations(
         title="Manage Shader",
         # Note: 'read' action is non-destructive; 'create', 'update', 'delete' are destructive

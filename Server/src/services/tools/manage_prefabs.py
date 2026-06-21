@@ -5,7 +5,7 @@ from mcp.types import ToolAnnotations
 
 from services.registry import mcp_for_unity_tool
 from services.tools import get_unity_instance_from_context
-from services.tools.utils import coerce_bool, normalize_vector3
+from services.tools.utils import coerce_bool, normalize_vector3, parse_json_payload
 from transport.unity_transport import send_with_unity_instance
 from transport.legacy.unity_connection import async_send_command_with_retry
 from services.tools.preflight import preflight
@@ -25,6 +25,9 @@ REQUIRED_PARAMS = {
     description=(
         "Manages Unity Prefab assets. "
         "Actions: get_info, get_hierarchy, create_from_gameobject, modify_contents, open_prefab_stage, save_prefab_stage, close_prefab_stage. "
+        "get_hierarchy is paginated (default 200 items). Use next_cursor from response to fetch more pages. "
+        "Use components=true with get_info/get_hierarchy to include serialized field values, or components=[\"TypeA\",\"TypeB\"] to filter. "
+        "Use properties=[\"fieldA\",\"fieldB\"] with get_info/get_hierarchy to select specific fields per component (e.g. [\"sizeDelta\", \"anchoredPosition\"]). "
         "Two approaches to prefab editing: "
         "(1) Headless: use modify_contents for automated/scripted edits without opening the prefab in the editor. "
         "(2) Interactive: use open_prefab_stage to open a prefab, then manage_gameobject/manage_components to edit objects inside the prefab stage, then save_prefab_stage to save and close_prefab_stage to return to the main scene. "
@@ -35,6 +38,7 @@ REQUIRED_PARAMS = {
         "Use delete_child parameter to remove child GameObjects from the prefab "
         "(single name/path or array of paths for batch deletion. "
         "Example: delete_child=[\"Child1\", \"Child2/Grandchild\"]). "
+        "Use component + properties with modify_contents to set fields on a single component (e.g. component=\"Rigidbody\", properties={\"mass\": 5.0}). "
         "Use component_properties with modify_contents to set serialized fields on existing components "
         "(e.g. component_properties={\"Rigidbody\": {\"mass\": 5.0}, \"MyScript\": {\"health\": 100}}). "
         "Supports object references via {\"guid\": \"...\"}, {\"path\": \"Assets/...\"}, or {\"instanceID\": 123}. "
@@ -60,7 +64,8 @@ async def manage_prefabs(
         "Prefab operation to perform.",
     ],
     prefab_path: Annotated[str, "Prefab asset path (e.g., Assets/Prefabs/MyPrefab.prefab)."] | None = None,
-    target: Annotated[str, "Target GameObject: scene object for create_from_gameobject, or object within prefab for modify_contents (name or path like 'Parent/Child')."] | None = None,
+    target: Annotated[str, "Target GameObject: scene object for create_from_gameobject, or object within prefab for modify_contents/get_info/get_hierarchy (name or path like 'Parent/Child')."] | None = None,
+    components: Annotated[bool | list[str] | str, "Include component serialized data in get_info/get_hierarchy responses. Pass true for all components, or a list of type names to filter (e.g. ['Rigidbody', 'MyScript'])."] | None = None,
     allow_overwrite: Annotated[bool, "Allow replacing existing prefab."] | None = None,
     search_inactive: Annotated[bool, "Include inactive GameObjects in search."] | None = None,
     unlink_if_instance: Annotated[bool, "Unlink from existing prefab before creating new one."] | None = None,
@@ -77,7 +82,13 @@ async def manage_prefabs(
     components_to_remove: Annotated[list[str], "Component types to remove in modify_contents."] | None = None,
     create_child: Annotated[dict[str, Any] | list[dict[str, Any]], "Create child GameObject(s) in the prefab. Single object or array of objects, each with: name (required), parent (optional, defaults to target), source_prefab_path (optional: asset path to instantiate as nested prefab, e.g. 'Assets/Prefabs/Bullet.prefab'), primitive_type (optional: Cube, Sphere, Capsule, Cylinder, Plane, Quad), position, rotation, scale, components_to_add, tag, layer, set_active. source_prefab_path and primitive_type are mutually exclusive."] | None = None,
     delete_child: Annotated[str | list[str], "Child name(s) or path(s) to remove from the prefab. Supports single string or array for batch deletion (e.g. 'Child1' or ['Child1', 'Child1/Grandchild'])."] | None = None,
+    component: Annotated[str, "Component type name to set properties on in modify_contents (use with 'properties'). Example: 'Rigidbody'."] | None = None,
+    properties: Annotated[list | dict | str | None, "For get_info/get_hierarchy: list of property names to include per component (e.g. ['sizeDelta', 'anchoredPosition']). For modify_contents: dict of property values to set on the specified component (use with 'component'). Example: {\"mass\": 5.0, \"useGravity\": false}."] = None,
     component_properties: Annotated[dict[str, dict[str, Any]], "Set properties on existing components in modify_contents. Keys are component type names, values are dicts of property name to value. Example: {\"Rigidbody\": {\"mass\": 5.0}, \"MyScript\": {\"health\": 100}}. Supports object references via {\"guid\": \"...\"}, {\"path\": \"Assets/...\"}, or {\"instanceID\": 123}. For Sprite sub-assets: {\"guid\": \"...\", \"spriteName\": \"<name>\"}. Single-sprite textures auto-resolve."] | None = None,
+    include_internal: Annotated[bool | None, "Include engine-internal properties in component data for get_info/get_hierarchy. Default: false. When false, built-in Unity components are filtered: obsolete shortcuts, read-only computed properties (bounds, velocity), base-class noise (tag, name, gameObject, hideFlags), and curated internal fields (lightmap, GI, physics solver settings). User scripts are never filtered."] = None,
+    page_size: Annotated[int | None, "Page size for get_hierarchy pagination. Default: 200, max: 1000."] = None,
+    cursor: Annotated[int | None, "Pagination cursor for get_hierarchy. Default: 0. Use next_cursor from previous response."] = None,
+    max_depth: Annotated[int | None, "Max hierarchy depth for get_hierarchy. Default: 50. 0=unlimited."] = None,
 ) -> dict[str, Any]:
     # Back-compat: map 'name' → 'target' for create_from_gameobject (Unity accepts both)
     if action == "create_from_gameobject" and target is None and name is not None:
@@ -118,6 +129,19 @@ async def manage_prefabs(
 
         if target:
             params["target"] = target
+
+        # components param: bool or list of type names (for get_info/get_hierarchy)
+        if components is not None:
+            if isinstance(components, str):
+                components_val = parse_json_payload(components)
+                if components_val is not None:
+                    params["components"] = components_val
+                elif components.lower() in ("true", "1"):
+                    params["components"] = True
+                else:
+                    params["components"] = [components]
+            else:
+                params["components"] = components
 
         allow_overwrite_val = coerce_bool(allow_overwrite)
         if allow_overwrite_val is not None:
@@ -162,8 +186,29 @@ async def manage_prefabs(
             params["componentsToAdd"] = components_to_add
         if components_to_remove is not None:
             params["componentsToRemove"] = components_to_remove
+        if component is not None:
+            params["component"] = component
+        if properties is not None:
+            # Ensure JSON-string form (e.g. '["sizeDelta"]') is parsed to a native list
+            # so the C# side always receives a JSON array, not a quoted string.
+            if isinstance(properties, str):
+                parsed_props = parse_json_payload(properties)
+                if parsed_props is not None:
+                    properties = parsed_props
+            params["properties"] = properties
         if component_properties is not None:
             params["componentProperties"] = component_properties
+        if action in ("get_info", "get_hierarchy"):
+            include_int = coerce_bool(include_internal, default=None)
+            if include_int is not None:
+                params["includeInternal"] = include_int
+        if action == "get_hierarchy":
+            if page_size is not None:
+                params["page_size"] = int(page_size)
+            if cursor is not None:
+                params["cursor"] = int(cursor)
+            if max_depth is not None:
+                params["max_depth"] = int(max_depth)
         if create_child is not None:
             # Normalize vector fields within create_child (handles single object or array)
             def normalize_child_params(child: Any, index: int | None = None) -> tuple[dict | None, str | None]:

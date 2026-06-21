@@ -1,7 +1,9 @@
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Linq;
 using System.Reflection;
+using System.Threading.Tasks;
 using MCPForUnity.Runtime.Serialization; // For Converters
 using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
@@ -17,6 +19,89 @@ namespace MCPForUnity.Editor.Helpers
     /// </summary> 
     public static class GameObjectSerializer
     {
+        // --- Internal property filtering (includeInternal=false) ---
+        //
+        // Four layers filter noise from built-in component output for LLM consumption:
+        //   1. [Obsolete] attribute   — auto-skips deprecated properties (legacy shortcuts, etc.)
+        //   2. Read-only (no setter)  — auto-skips computed/derived values (bounds, velocity, etc.)
+        //   3. Base class declaring   — auto-skips inherited Object/Component noise (tag, name, etc.)
+        //   4. Curated skip list      — manually maintained for writable-but-internal properties
+        //
+        // Layers 1-3 only apply to Unity built-in types (never user MonoBehaviours).
+        // Layer 4 is the HashSet below.
+
+        // Base types whose declared properties are infrastructure noise, not component-specific.
+        // Properties from these types (tag, name, gameObject, hideFlags) are already on the outer object.
+        // Behaviour is intentionally excluded so 'enabled' still comes through.
+        private static readonly HashSet<Type> NoiseBaseTypes = new()
+        {
+            typeof(UnityEngine.Object),
+            typeof(Component),
+        };
+
+        // Writable, non-deprecated engine properties too low-level for typical LLM use.
+        // Read-only noise (bounds, isVisible, etc.) is handled automatically by the CanWrite check.
+        // Deprecated properties (rigidbody, camera shortcuts) are handled by the Obsolete check.
+        // Base class noise (tag, name, gameObject, hideFlags) is handled by the DeclaringType check.
+        private static readonly HashSet<string> InternalPropertyNames = new(StringComparer.Ordinal)
+        {
+            // Renderer: lightmapping
+            "lightmapScaleOffset", "realtimeLightmapScaleOffset",
+            "lightmapTilingOffset", "realtimeLightmapTilingOffset",
+            "lightmapIndex", "realtimeLightmapIndex",
+            "scaleInLightmap", "stitchLightmapSeams", "globalIlluminationMeshLod",
+            // Renderer: probes
+            "lightProbeUsage", "reflectionProbeUsage", "lightProbeProxyVolumeOverride",
+            "lightProbeAnchor", "probeAnchor",
+            // Renderer: raytracing
+            "rayTracingMode", "rayTracingAccelerationStructureBuildFlags",
+            "rayTracingAccelerationStructureBuildFlagsOverride",
+            // Renderer: shadows/motion (castShadows, receiveShadows, shadowCastingMode kept — useful for game dev)
+            "motionVectorGenerationMode", "staticShadowCaster",
+            "motionVectors", "useLightProbes",
+            // Renderer: batching, LOD, misc
+            "forceMeshLod", "meshLodSelectionBias", "allowOcclusionWhenDynamic",
+            "rendererPriority", "renderingLayerMask",
+            "forceRenderingOff", "sortingLayerID",
+            // Renderer: GI/vertex streams
+            "enlightenVertexStream", "additionalVertexStreams", "subMeshStartIndex", "receiveGI",
+            // Renderer: bounds (writable in Unity 6+ but computed noise for LLMs)
+            "bounds", "localBounds",
+            // Collider/Rigidbody layer masks
+            "excludeLayers", "includeLayers", "forceSendLayers", "forceReceiveLayers",
+            "contactCaptureLayers", "callbackLayers",
+            // Physics: solver internals
+            "solverIterations", "solverVelocityIterations", "sleepThreshold",
+            "maxDepenetrationVelocity", "maxAngularVelocity", "maxLinearVelocity",
+            "contactOffset", "layerOverridePriority",
+            // Physics: deprecated aliases
+            "drag", "angularDrag",
+            // Physics: advanced inertia
+            "automaticCenterOfMass", "automaticInertiaTensor",
+            "inertiaTensorRotation", "inertiaTensor",
+            // Collider: advanced
+            "hasModifiableContacts", "providesContacts",
+        };
+
+        /// <summary>
+        /// Maximum time (ms) allowed for reading all properties/fields of a single component.
+        /// If exceeded, remaining properties are skipped and a warning is logged.
+        /// </summary>
+        private const int ComponentBudgetMs = 2000;
+
+        /// <summary>
+        /// Maximum time (ms) allowed for a single property/field getter.
+        /// Uses Task.Run + Wait to interrupt getters that hang indefinitely.
+        /// Only applied after a per-component Stopwatch shows the component is already slow.
+        /// </summary>
+        private const int PropertyTimeoutMs = 500;
+
+        /// <summary>
+        /// Threshold (ms) for a single property read. If any read exceeds this,
+        /// subsequent reads for the same component switch to guarded (threaded timeout) mode.
+        /// </summary>
+        private const int SlowPropertyThresholdMs = 100;
+
         // --- Data Serialization ---
 
         /// <summary>
@@ -238,6 +323,10 @@ namespace MCPForUnity.Editor.Helpers
             if (c == null) return null;
             Type componentType = c.GetType();
 
+            // Only apply internal filtering to Unity built-in types, never to user MonoBehaviours.
+            // When the caller asks for everything (includeNonPublicSerializedFields=true) we skip filtering.
+            bool shouldFilterInternal = !includeNonPublicSerializedFields && IsUnityBuiltInType(componentType);
+
             // --- Special handling for Transform to avoid reflection crashes and problematic properties --- 
             if (componentType == typeof(Transform))
             {
@@ -247,25 +336,53 @@ namespace MCPForUnity.Editor.Helpers
                 {
                     { "typeName", componentType.FullName },
                     { "instanceID", tr.GetInstanceIDCompat() },
-                    // Manually extract known-safe properties. Avoid Quaternion 'rotation' and 'lossyScale'.
-                    { "position", CreateTokenFromValue(tr.position, typeof(Vector3))?.ToObject<object>() ?? new JObject() },
-                    { "localPosition", CreateTokenFromValue(tr.localPosition, typeof(Vector3))?.ToObject<object>() ?? new JObject() },
-                    { "eulerAngles", CreateTokenFromValue(tr.eulerAngles, typeof(Vector3))?.ToObject<object>() ?? new JObject() }, // Use Euler angles
-                    { "localEulerAngles", CreateTokenFromValue(tr.localEulerAngles, typeof(Vector3))?.ToObject<object>() ?? new JObject() },
-                    { "localScale", CreateTokenFromValue(tr.localScale, typeof(Vector3))?.ToObject<object>() ?? new JObject() },
-                    { "right", CreateTokenFromValue(tr.right, typeof(Vector3))?.ToObject<object>() ?? new JObject() },
-                    { "up", CreateTokenFromValue(tr.up, typeof(Vector3))?.ToObject<object>() ?? new JObject() },
-                    { "forward", CreateTokenFromValue(tr.forward, typeof(Vector3))?.ToObject<object>() ?? new JObject() },
-                    { "parentInstanceID", tr.parent?.gameObject.GetInstanceIDCompat() ?? 0 },
-                    { "rootInstanceID", tr.root?.gameObject.GetInstanceIDCompat() ?? 0 },
-                    { "childCount", tr.childCount },
-                    // Include standard Object/Component properties
-                    { "name", tr.name },
-                    { "tag", tr.tag },
-                    { "gameObjectInstanceID", tr.gameObject?.GetInstanceIDCompat() ?? 0 }
+                    { "properties", new Dictionary<string, object>
+                        {
+                            // Manually extract known-safe properties. Avoid Quaternion 'rotation' and 'lossyScale'.
+                            { "position", CreateTokenFromValue(tr.position, typeof(Vector3))?.ToObject<object>() ?? new JObject() },
+                            { "localPosition", CreateTokenFromValue(tr.localPosition, typeof(Vector3))?.ToObject<object>() ?? new JObject() },
+                            { "eulerAngles", CreateTokenFromValue(tr.eulerAngles, typeof(Vector3))?.ToObject<object>() ?? new JObject() },
+                            { "localEulerAngles", CreateTokenFromValue(tr.localEulerAngles, typeof(Vector3))?.ToObject<object>() ?? new JObject() },
+                            { "localScale", CreateTokenFromValue(tr.localScale, typeof(Vector3))?.ToObject<object>() ?? new JObject() },
+                            { "right", CreateTokenFromValue(tr.right, typeof(Vector3))?.ToObject<object>() ?? new JObject() },
+                            { "up", CreateTokenFromValue(tr.up, typeof(Vector3))?.ToObject<object>() ?? new JObject() },
+                            { "forward", CreateTokenFromValue(tr.forward, typeof(Vector3))?.ToObject<object>() ?? new JObject() },
+                            { "parentInstanceID", tr.parent?.gameObject.GetInstanceIDCompat() ?? 0 },
+                            { "rootInstanceID", tr.root?.gameObject.GetInstanceIDCompat() ?? 0 },
+                            { "childCount", tr.childCount },
+                        }
+                    }
                 };
             }
             // --- End Special handling for Transform --- 
+
+            // --- Special handling for RectTransform (extends Transform with UI-specific properties) ---
+            if (componentType == typeof(RectTransform))
+            {
+                RectTransform rt = c as RectTransform;
+                return new Dictionary<string, object>
+                {
+                    { "typeName", componentType.FullName },
+                    { "instanceID", rt.GetInstanceIDCompat() },
+                    { "properties", new Dictionary<string, object>
+                        {
+                            { "anchoredPosition", CreateTokenFromValue(rt.anchoredPosition, typeof(Vector2))?.ToObject<object>() ?? new JObject() },
+                            { "sizeDelta", CreateTokenFromValue(rt.sizeDelta, typeof(Vector2))?.ToObject<object>() ?? new JObject() },
+                            { "anchorMin", CreateTokenFromValue(rt.anchorMin, typeof(Vector2))?.ToObject<object>() ?? new JObject() },
+                            { "anchorMax", CreateTokenFromValue(rt.anchorMax, typeof(Vector2))?.ToObject<object>() ?? new JObject() },
+                            { "pivot", CreateTokenFromValue(rt.pivot, typeof(Vector2))?.ToObject<object>() ?? new JObject() },
+                            { "offsetMin", CreateTokenFromValue(rt.offsetMin, typeof(Vector2))?.ToObject<object>() ?? new JObject() },
+                            { "offsetMax", CreateTokenFromValue(rt.offsetMax, typeof(Vector2))?.ToObject<object>() ?? new JObject() },
+                            { "localPosition", CreateTokenFromValue(rt.localPosition, typeof(Vector3))?.ToObject<object>() ?? new JObject() },
+                            { "localEulerAngles", CreateTokenFromValue(rt.localEulerAngles, typeof(Vector3))?.ToObject<object>() ?? new JObject() },
+                            { "localScale", CreateTokenFromValue(rt.localScale, typeof(Vector3))?.ToObject<object>() ?? new JObject() },
+                            { "parentInstanceID", rt.parent?.gameObject.GetInstanceIDCompat() ?? 0 },
+                            { "childCount", rt.childCount },
+                        }
+                    }
+                };
+            }
+            // --- End Special handling for RectTransform --- 
 
             // --- Special handling for Camera to avoid matrix-related crashes ---
             if (componentType == typeof(Camera))
@@ -419,6 +536,8 @@ namespace MCPForUnity.Editor.Helpers
                     {
                         // Basic filtering (readable, not indexer, not transform which is handled elsewhere)
                         if (!propInfo.CanRead || propInfo.GetIndexParameters().Length > 0 || propInfo.Name == "transform") continue;
+                        // Layer 1: Skip deprecated properties (replaces hardcoded obsolete shortcut list)
+                        if (propInfo.GetCustomAttribute<ObsoleteAttribute>() != null) continue;
                         // Skip properties whose return type would crash when accessed via reflection
                         // (e.g. Fusion IL-weaved types, Span<>, ReadOnlySpan<>, pointers)
                         if (IsUnsafeType(propInfo.PropertyType)) continue;
@@ -475,136 +594,134 @@ namespace MCPForUnity.Editor.Helpers
 
             // --- Use cached metadata ---
             var serializablePropertiesOutput = new Dictionary<string, object>();
-
-            // --- Add Logging Before Property Loop ---
-            // McpLog.Info($"[GetComponentData] Starting property loop for {componentType.Name}...");
-            // --- End Logging Before Property Loop ---
+            var componentSw = Stopwatch.StartNew();
+            bool useGuardedRead = false; // Escalate to threaded timeout if any read is slow
+            int skippedCount = 0;
 
             // Use cached properties
             foreach (var propInfo in cachedData.SerializableProperties)
             {
+                // Budget check: stop serializing this component if over time
+                if (componentSw.ElapsedMilliseconds > ComponentBudgetMs)
+                {
+                    skippedCount = cachedData.SerializableProperties.Count
+                                 + cachedData.SerializableFields.Count
+                                 - serializablePropertiesOutput.Count;
+                    McpLog.Warn($"[GetComponentData] Time budget exceeded for {componentType.Name} " +
+                                $"({componentSw.ElapsedMilliseconds}ms). Skipped ~{skippedCount} remaining members.");
+                    break;
+                }
+
                 string propName = propInfo.Name;
-
-                // --- Skip known obsolete/problematic Component shortcut properties ---
                 bool skipProperty = false;
-                if (propName == "rigidbody" || propName == "rigidbody2D" || propName == "camera" ||
-                    propName == "light" || propName == "animation" || propName == "constantForce" ||
-                    propName == "renderer" || propName == "audio" || propName == "networkView" ||
-                    propName == "collider" || propName == "collider2D" || propName == "hingeJoint" ||
-                    propName == "particleSystem" ||
-                    // Also skip potentially problematic Matrix properties prone to cycles/errors
-                    propName == "worldToLocalMatrix" || propName == "localToWorldMatrix")
-                {
-                    // McpLog.Info($"[GetComponentData] Explicitly skipping generic property: {propName}"); // Optional log
-                    skipProperty = true;
-                }
-                // --- End Skip Generic Properties ---
 
-                // --- Skip specific potentially problematic Camera properties ---
+                // --- Safety skips: properties that crash serialization regardless of filtering ---
                 if (componentType == typeof(Camera) &&
-                    (propName == "pixelRect" ||
-                     propName == "rect" ||
-                     propName == "cullingMatrix" ||
-                     propName == "useOcclusionCulling" ||
-                     propName == "worldToCameraMatrix" ||
-                     propName == "projectionMatrix" ||
-                     propName == "nonJitteredProjectionMatrix" ||
-                     propName == "previousViewProjectionMatrix" ||
+                    (propName == "pixelRect" || propName == "rect" ||
+                     propName == "cullingMatrix" || propName == "useOcclusionCulling" ||
+                     propName == "worldToCameraMatrix" || propName == "projectionMatrix" ||
+                     propName == "nonJitteredProjectionMatrix" || propName == "previousViewProjectionMatrix" ||
                      propName == "cameraToWorldMatrix"))
-                {
-                    // McpLog.Info($"[GetComponentData] Explicitly skipping Camera property: {propName}");
                     skipProperty = true;
-                }
-                // --- End Skip Camera Properties ---
 
-                // --- Skip specific potentially problematic Transform properties ---
-                if (componentType == typeof(Transform) &&
-                    (propName == "lossyScale" ||
-                     propName == "rotation" ||
-                     propName == "worldToLocalMatrix" ||
-                     propName == "localToWorldMatrix"))
-                {
+                // Use IsAssignableFrom so RectTransform (a Transform subclass) is also covered.
+                if (typeof(Transform).IsAssignableFrom(componentType) &&
+                    (propName == "lossyScale" || propName == "rotation" ||
+                     propName == "worldToLocalMatrix" || propName == "localToWorldMatrix"))
                     skipProperty = true;
-                }
-                // --- End Skip Transform Properties ---
 
-                // --- Skip Collider properties that cause native crashes via PhysX ---
-                if (typeof(Collider).IsAssignableFrom(componentType) &&
-                    propName == "GeometryHolder")
-                {
+                if (typeof(Collider).IsAssignableFrom(componentType) && propName == "GeometryHolder")
                     skipProperty = true;
-                }
-                // --- End Skip Collider Properties ---
 
-                // Skip if flagged
+                // --- Internal filtering layers (only for built-in types when includeInternal=false) ---
+                if (shouldFilterInternal)
+                {
+                    // Layer 2: Skip read-only computed/derived properties (bounds, velocity, isVisible, etc.)
+                    if (!propInfo.CanWrite)
+                        skipProperty = true;
+                    // Layer 3: Skip base class noise (tag, name from Object/Component — already on outer object)
+                    else if (NoiseBaseTypes.Contains(propInfo.DeclaringType))
+                        skipProperty = true;
+                    // Layer 4: Curated skip list for writable-but-internal properties
+                    else if (InternalPropertyNames.Contains(propName))
+                        skipProperty = true;
+                }
+
                 if (skipProperty)
-                {
                     continue;
-                }
 
                 try
                 {
-                    // --- Add detailed logging --- 
-                    // McpLog.Info($"[GetComponentData] Accessing: {componentType.Name}.{propName}");
-                    // --- End detailed logging ---
-
                     // --- Special handling for material/mesh properties in edit mode ---
                     object value;
                     if (!Application.isPlaying && (propName == "material" || propName == "materials" || propName == "mesh"))
                     {
                         // In edit mode, use sharedMaterial/sharedMesh to avoid instantiation warnings
                         if ((propName == "material" || propName == "materials") && c is Renderer renderer)
-                        {
-                            if (propName == "material")
-                                value = renderer.sharedMaterial;
-                            else // materials
-                                value = renderer.sharedMaterials;
-                        }
+                            value = propName == "material" ? (object)renderer.sharedMaterial : renderer.sharedMaterials;
                         else if (propName == "mesh" && c is MeshFilter meshFilter)
-                        {
                             value = meshFilter.sharedMesh;
-                        }
                         else
-                        {
-                            // Fallback to normal property access if type doesn't match
-                            value = propInfo.GetValue(c);
-                        }
+                            value = ReadPropertyValue(propInfo, c, componentType, ref useGuardedRead);
                     }
                     else
                     {
-                        value = propInfo.GetValue(c);
+                        value = ReadPropertyValue(propInfo, c, componentType, ref useGuardedRead);
                     }
                     // --- End special handling ---
 
                     Type propType = propInfo.PropertyType;
                     AddSerializableValue(serializablePropertiesOutput, propName, propType, value);
                 }
+                catch (TimeoutException)
+                {
+                    McpLog.Warn($"[GetComponentData] Property '{propName}' on {componentType.Name} timed out. Skipping.");
+                }
                 catch (Exception)
                 {
-                    // McpLog.Warn($"Could not read property {propName} on {componentType.Name}");
+                    // Silently skip unreadable properties
                 }
             }
 
-            // --- Add Logging Before Field Loop ---
-            // McpLog.Info($"[GetComponentData] Starting field loop for {componentType.Name}...");
-            // --- End Logging Before Field Loop ---
-
-            // Use cached fields
-            foreach (var fieldInfo in cachedData.SerializableFields)
+            // Use cached fields (only if budget not exhausted)
+            if (componentSw.ElapsedMilliseconds <= ComponentBudgetMs)
             {
-                try
+                foreach (var fieldInfo in cachedData.SerializableFields)
                 {
-                    // --- Add detailed logging for fields --- 
-                    // McpLog.Info($"[GetComponentData] Accessing Field: {componentType.Name}.{fieldInfo.Name}");
-                    // --- End detailed logging for fields ---
-                    object value = fieldInfo.GetValue(c);
-                    string fieldName = fieldInfo.Name;
-                    Type fieldType = fieldInfo.FieldType;
-                    AddSerializableValue(serializablePropertiesOutput, fieldName, fieldType, value);
-                }
-                catch (Exception)
-                {
-                    // McpLog.Warn($"Could not read field {fieldInfo.Name} on {componentType.Name}");
+                    if (componentSw.ElapsedMilliseconds > ComponentBudgetMs)
+                    {
+                        McpLog.Warn($"[GetComponentData] Time budget exceeded for {componentType.Name} during field reads.");
+                        break;
+                    }
+
+                    // Internal filtering for fields (built-in types only)
+                    if (shouldFilterInternal &&
+                        (InternalPropertyNames.Contains(fieldInfo.Name) ||
+                         NoiseBaseTypes.Contains(fieldInfo.DeclaringType)))
+                        continue;
+
+                    // Skip backing fields (m_Foo) when the corresponding property (foo/Foo)
+                    // is already serialized — avoids noisy duplication like minWidth + m_MinWidth.
+                    if (shouldFilterInternal && fieldInfo.Name.StartsWith("m_"))
+                    {
+                        string stripped = fieldInfo.Name.Substring(2);
+                        // Check camelCase (m_MinWidth → minWidth) and PascalCase (m_MinWidth → MinWidth)
+                        string camel = char.ToLowerInvariant(stripped[0]) + stripped.Substring(1);
+                        if (serializablePropertiesOutput.ContainsKey(camel) || serializablePropertiesOutput.ContainsKey(stripped))
+                            continue;
+                    }
+
+                    try
+                    {
+                        object value = fieldInfo.GetValue(c);
+                        string fieldName = fieldInfo.Name;
+                        Type fieldType = fieldInfo.FieldType;
+                        AddSerializableValue(serializablePropertiesOutput, fieldName, fieldType, value);
+                    }
+                    catch (Exception)
+                    {
+                        // Silently skip unreadable fields
+                    }
                 }
             }
             // --- End Use cached metadata ---
@@ -615,6 +732,43 @@ namespace MCPForUnity.Editor.Helpers
             }
 
             return data;
+        }
+
+        /// <summary>
+        /// Reads a property value with optional guarded (threaded timeout) mode.
+        /// When useGuardedRead is true, the getter runs on a thread pool thread with a timeout.
+        /// If any non-guarded read takes longer than SlowPropertyThresholdMs, escalates to guarded mode.
+        /// Throws TimeoutException if the getter hangs.
+        /// </summary>
+        private static object ReadPropertyValue(PropertyInfo propInfo, Component c, Type componentType, ref bool useGuardedRead)
+        {
+            if (useGuardedRead)
+            {
+                // Already know this component is slow — use threaded timeout
+                object result = null;
+                Exception caught = null;
+                var task = Task.Run(() =>
+                {
+                    try { result = propInfo.GetValue(c); }
+                    catch (Exception ex) { caught = ex; }
+                });
+                if (!task.Wait(PropertyTimeoutMs))
+                    throw new TimeoutException($"{componentType.Name}.{propInfo.Name}");
+                if (caught != null)
+                    throw caught;
+                return result;
+            }
+
+            // Normal read with timing
+            long before = Stopwatch.GetTimestamp();
+            object value = propInfo.GetValue(c);
+            long elapsed = (Stopwatch.GetTimestamp() - before) * 1000 / Stopwatch.Frequency;
+            if (elapsed > SlowPropertyThresholdMs)
+            {
+                McpLog.Warn($"[GetComponentData] Slow property: {componentType.Name}.{propInfo.Name} took {elapsed}ms. Switching to guarded reads.");
+                useGuardedRead = true;
+            }
+            return value;
         }
 
         // Helper function to decide how to serialize different types
@@ -707,6 +861,7 @@ namespace MCPForUnity.Editor.Helpers
         {
             Converters = new List<JsonConverter>
             {
+                new Newtonsoft.Json.Converters.StringEnumConverter(), // Serialize enums as string names for agent readability
                 new Vector3Converter(),
                 new Vector2Converter(),
                 new QuaternionConverter(),
@@ -727,6 +882,12 @@ namespace MCPForUnity.Editor.Helpers
         {
             if (value == null) return JValue.CreateNull();
 
+            // Skip types that crash Newtonsoft.Json serialization (Unity 6+ TransformHandle
+            // implements IEnumerable but throws NullReferenceException when enumerated)
+            string typeName = type.Name;
+            if (typeName == "TransformHandle" || typeName == "TransformAccessArray")
+                return null;
+
             try
             {
                 // Use the pre-configured OUTPUT serializer instance
@@ -742,6 +903,15 @@ namespace MCPForUnity.Editor.Helpers
                 McpLog.Warn($"[GameObjectSerializer] Unexpected error serializing value of type {type.FullName}: {e}. Skipping property/field.");
                 return null; // Indicate serialization failure
             }
+        }
+
+        private static bool IsUnityBuiltInType(Type type)
+        {
+            if (type == null) return false;
+            string ns = type.Namespace;
+            if (string.IsNullOrEmpty(ns)) return false;
+            return ns == "UnityEngine" || ns == "UnityEditor"
+                || ns.StartsWith("UnityEngine.") || ns.StartsWith("UnityEditor.");
         }
     }
 }

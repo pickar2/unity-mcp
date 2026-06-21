@@ -31,6 +31,17 @@ namespace MCPForUnity.Editor.Helpers
                 return null;
             }
 
+            // For UnityEngine.Object-derived types, try loading from asset path/GUID/instruction.
+            // LoadAssetAtPath<Object> returns the main asset (e.g. Texture2D) and misses sub-assets
+            // (e.g. Sprite); the typed LoadAssetAtPath below resolves them correctly.
+            if (typeof(UnityEngine.Object).IsAssignableFrom(targetType))
+            {
+                var asset = TryLoadUnityObject(token, targetType);
+                if (asset != null) return asset;
+                // null token explicitly means "clear reference"
+                if (token.Type == JTokenType.Null) return null;
+            }
+
             try
             {
                 // Use the shared Unity serializer with custom converters
@@ -41,6 +52,45 @@ namespace MCPForUnity.Editor.Helpers
                 McpLog.Error($"Error converting token to {targetType.FullName}: {ex.Message}\nToken: {token.ToString(Formatting.None)}");
                 throw;
             }
+        }
+
+        private static UnityEngine.Object TryLoadUnityObject(JToken token, Type targetType)
+        {
+            // String value: treat as asset path or GUID
+            if (token.Type == JTokenType.String)
+            {
+                string str = token.ToString();
+                if (string.IsNullOrWhiteSpace(str)) return null;
+
+                // GUID (32 hex chars, no path separators)
+                if (str.Length == 32 && !str.Contains("/") && !str.Contains("\\") && !str.Contains("."))
+                {
+                    string guidPath = AssetDatabase.GUIDToAssetPath(str);
+                    if (!string.IsNullOrEmpty(guidPath))
+                    {
+                        var byGuid = AssetDatabase.LoadAssetAtPath(guidPath, targetType);
+                        if (byGuid != null) return byGuid;
+                    }
+                }
+
+                // Asset path
+                string sanitized = AssetPathUtility.SanitizeAssetPath(str);
+                if (!string.IsNullOrEmpty(sanitized))
+                {
+                    var byPath = AssetDatabase.LoadAssetAtPath(sanitized, targetType);
+                    if (byPath != null) return byPath;
+                }
+
+                return null;
+            }
+
+            // Object with ref instruction: { "path": "...", "guid": "...", "find": "..." }
+            if (token is JObject obj)
+            {
+                return ObjectResolver.Resolve(obj, targetType);
+            }
+
+            return null;
         }
 
         /// <summary>

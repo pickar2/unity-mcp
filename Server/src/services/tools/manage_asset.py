@@ -17,11 +17,18 @@ from services.tools.preflight import preflight
 
 
 @mcp_for_unity_tool(
-    description=(
-        "Performs asset operations (import, create, modify, delete, etc.) in Unity.\n\n"
-        "Tip (payload safety): for `action=\"search\"`, prefer paging (`page_size`, `page_number`) and keep "
-        "`generate_preview=false` (previews can add large base64 blobs)."
-    ),
+    description="""Asset operations: search, get_info, create, modify, delete, duplicate, move, rename, create_folder.
+
+Examples:
+  manage_asset(action="search", path="Assets", search_pattern="t:Prefab", page_size=25)
+  manage_asset(action="get_info", path="Assets/Prefabs/Player.prefab")
+  manage_asset(action="create", path="Assets/Materials/New.mat", asset_type="Material")
+  manage_asset(action="duplicate", path="Assets/Prefabs/A.prefab", destination="Assets/Prefabs/B.prefab")
+  manage_asset(action="move", path="Assets/Old/Script.cs", destination="Assets/New/Script.cs")
+  manage_asset(action="rename", path="Assets/Scripts/Foo.cs", destination="Bar")
+  manage_asset(action="delete", path="Assets/Scripts/Unused.cs")
+
+Tip: keep page_size<=25 and generate_preview=false for fast, LLM-friendly responses.""",
     annotations=ToolAnnotations(
         title="Manage Asset",
         destructiveHint=True,

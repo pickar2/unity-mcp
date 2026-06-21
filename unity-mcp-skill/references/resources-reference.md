@@ -47,6 +47,10 @@ mcpforunity://{category}/{resource_path}[?query_params]
     "path": "Assets/Scenes/Main.unity",
     "name": "Main"
   },
+  "compilation": {
+    "is_compiling": false,
+    "script_compilation_failed": false
+  },
   "ready_for_tools": true,
   "blocking_reasons": [],
   "recommended_retry_after_ms": null,
@@ -60,7 +64,8 @@ mcpforunity://{category}/{resource_path}[?query_params]
 **Key Fields:**
 - `ready_for_tools`: Only proceed if `true`
 - `is_compiling`: Wait if `true`
-- `blocking_reasons`: Array explaining why tools might fail
+- `script_compilation_failed`: Last compilation had errors - check `read_console(types=["error"])`
+- `blocking_reasons`: Array explaining why tools might fail (includes `"script_compilation_failed"`)
 - `recommended_retry_after_ms`: Suggested wait time
 
 ### mcpforunity://editor/selection
@@ -278,6 +283,14 @@ mcpforunity://{category}/{resource_path}[?query_params]
 ---
 
 ## Scene & GameObject Resources
+
+### mcpforunity://scene/hierarchy
+
+**Purpose:** Quick read-only overview of the active scene's root GameObjects (with child counts). Lightweight alternative to `manage_scene(action="get_hierarchy")` when you only need the top-level tree.
+
+**Returns:** Root objects of the active scene with child counts (capped at 100 roots).
+
+**When to use:** Need a fast glance at scene structure before drilling in. For deeper per-parent exploration or paging, use `manage_scene(action="get_hierarchy", parent=...)`.
 
 ### mcpforunity://scene/gameobject-api
 

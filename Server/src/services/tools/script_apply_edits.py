@@ -672,7 +672,8 @@ def _err(code: str, message: str, *, expected: dict[str, Any] | None = None, rew
     name="script_apply_edits",
     unity_target="manage_script",
     description=(
-        """Structured C# edits (methods/classes) with safer boundaries - prefer this over raw text.
+        """Structured C# edits (methods/classes) with safer boundaries than raw text edits.
+
     Best practices:
     - Prefer anchor_* ops for pattern-based insert/replace near stable markers
     - Use replace_method/delete_method for whole-method changes (keeps signatures balanced)
@@ -703,7 +704,7 @@ def _err(code: str, message: str, *, expected: dict[str, Any] | None = None, rew
     ],
     "options": {"validate": "standard", "refresh": "immediate"}
     }
-    "2) Insert a method after another:
+    2) Insert a method after another:
     {
         "name": "SmartReach",
         "path": "Assets/Scripts/Interaction",
@@ -717,7 +718,7 @@ def _err(code: str, message: str, *, expected: dict[str, Any] | None = None, rew
         }
     ],
     }
-    ]"""
+    """
     ),
     annotations=ToolAnnotations(
         title="Script Apply Edits",

@@ -364,7 +364,12 @@ namespace MCPForUnity.Editor.Services.Transport.Transports
                 }
                 catch (SocketException ex)
                 {
-                    McpLog.Error($"Failed to start TCP listener: {ex.Message}");
+                    // Downgrade to Debug during domain reload — port conflicts are expected
+                    // while the previous listener is still tearing down.
+                    if (EditorStateCache.IsRecentDomainReload())
+                        McpLog.Debug($"Failed to start TCP listener (resuming after domain reload): {ex.Message}");
+                    else
+                        McpLog.Error($"Failed to start TCP listener: {ex.Message}");
                     WriteHeartbeat(false, "start_failed");
                 }
             }

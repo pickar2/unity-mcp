@@ -10,6 +10,7 @@ Common workflows and patterns for effective Unity-MCP usage.
 - [Asset Management Workflows](#asset-management-workflows)
 - [Testing Workflows](#testing-workflows)
 - [Debugging Workflows](#debugging-workflows)
+- [GPU Debugging Workflows](#gpu-debugging-workflows)
 - [UI Creation Workflows](#ui-creation-workflows)
 - [Camera & Cinemachine Workflows](#camera--cinemachine-workflows)
 - [ProBuilder Workflows](#probuilder-workflows)
@@ -237,9 +238,9 @@ public class EnemyAI : MonoBehaviour
 
 # 3. Check for errors
 console = read_console(types=["error"], count=10)
-if console["messages"]:
+if console["entries"]:
     # Handle compilation errors
-    print("Compilation errors:", console["messages"])
+    print("Compilation errors:", console["entries"])
 else:
     # 4. Attach to GameObject
     manage_gameobject(action="modify", target="Enemy", components_to_add=["EnemyAI"])
@@ -534,22 +535,19 @@ get_test_job(job_id=result["job_id"], wait_timeout=30)
 
 ```python
 # 1. Check console for errors
-errors = read_console(
-    types=["error"],
-    count=20,
-    include_stacktrace=True,
-    format="detailed"
-)
+errors = read_console(types=["error"], count=20, include_stacktrace=True)
 
 # 2. For each error, find the file and line
-for error in errors["messages"]:
-    # Parse error message for file:line info
+for entry in errors["entries"]:
+    # Parse error message for file:line info (e.g., "Assets/Scripts/Foo.cs(10,5): error CS1002")
     # Use find_in_file to locate the problematic code
     pass
 
 # 3. After fixing, refresh and check again
 refresh_unity(mode="force", scope="scripts", compile="request", wait_for_ready=True)
-read_console(types=["error"], count=10)
+
+# 4. Poll for new errors since last read
+read_console(types=["error"], since_sequence_id=errors["latestSequenceId"])
 ```
 
 ### Investigate Missing References
@@ -590,6 +588,49 @@ for item in hierarchy["data"]["items"]:
 
 # 3. Visual verification
 manage_camera(action="screenshot")
+```
+
+---
+
+## GPU Debugging Workflows
+
+### Inspect Compute Shader Output
+
+```python
+# 1. Enter play mode
+manage_editor(action="play", recompile=True)
+
+# 2. Discover available buffers
+inspect_buffer(target="*/ParticleCompute.*", list_only=True)
+
+# 3. Inspect buffer with structured format
+result = inspect_buffer(
+    target="ParticleManager/ParticleCompute.positionBuffer",
+    count=16,
+    format="position:float3@0,velocity:float3@12"
+)
+
+# 4. Step frame and inspect again
+manage_editor(action="step")
+inspect_buffer(
+    target="ParticleManager/ParticleCompute.positionBuffer",
+    count=16,
+    format="position:float3@0,velocity:float3@12"
+)
+```
+
+### Monitor Console During Play Mode
+
+```python
+# 1. Enter play mode
+manage_editor(action="play")
+
+# 2. Read initial state
+state = read_console(types=["error", "warning", "log"], count=50)
+last_seq = state["latestSequenceId"]
+
+# 3. After some gameplay, poll for new entries only
+new_entries = read_console(since_sequence_id=last_seq)
 ```
 
 ---
@@ -2105,7 +2146,26 @@ refresh_unity(mode="force", scope="scripts", compile="request", wait_for_ready=T
 
 # 4. Verify clean console
 errors = read_console(types=["error"], count=5)
-if not errors["messages"]:
+if not errors["entries"]:
     # Safe to proceed with tools
     pass
+```
+
+### Play Mode Awareness
+
+```python
+# Preferred: use manage_editor with recompile for compile + error check + play
+manage_editor(action="play", recompile=True)
+# Returns error if compilation fails, otherwise enters play mode
+
+# Write operations (scripts, shaders, scenes) are blocked in play mode.
+# Exit play mode first:
+manage_editor(action="stop")
+
+# Then proceed with modifications
+manage_script(action="update", name="MyScript", contents="...")
+refresh_unity(compile="request", wait_for_ready=True)
+
+# Re-enter play mode
+manage_editor(action="play", recompile=True)
 ```

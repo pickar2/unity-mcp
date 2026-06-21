@@ -720,7 +720,16 @@ namespace MCPForUnity.Editor.Helpers
                     return ResolveSceneObjectByName(prop, nameToken.ToString(), componentFilter, out error);
                 }
 
-                error = "Object reference must contain 'instanceID', 'guid', 'path', or 'name'.";
+                // Fallback: delegate to ObjectResolver for {"find": "..."} and other formats
+                var refType = prop.objectReferenceValue != null ? prop.objectReferenceValue.GetType() : typeof(UnityEngine.Object);
+                var fallbackResolved = ObjectResolver.Resolve(jObj, refType);
+                if (fallbackResolved != null)
+                {
+                    prop.objectReferenceValue = fallbackResolved;
+                    return true;
+                }
+
+                error = "Object reference must contain 'instanceID', 'guid', 'path', 'name', or 'find'.";
                 return false;
             }
 
@@ -935,6 +944,7 @@ namespace MCPForUnity.Editor.Helpers
         {
             error = null;
             var names = prop.enumNames;
+            var displayNames = prop.enumDisplayNames;
             if (names == null || names.Length == 0)
             {
                 error = "Enum has no names.";
@@ -943,16 +953,13 @@ namespace MCPForUnity.Editor.Helpers
 
             if (value.Type == JTokenType.Integer)
             {
-                int idx = value.Value<int>();
-                if (idx < 0 || idx >= names.Length)
-                {
-                    error = $"Enum index out of range: {idx}.";
-                    return false;
-                }
-                prop.enumValueIndex = idx;
+                // Treat integer as raw enum value, not as an index into enumNames.
+                // This matches what GameObjectSerializer returns and what agents expect.
+                prop.intValue = value.Value<int>();
                 return true;
             }
 
+            // String: try C# enum member names, then display names (may have spaces)
             string s = value.ToString();
             for (int i = 0; i < names.Length; i++)
             {
@@ -962,7 +969,21 @@ namespace MCPForUnity.Editor.Helpers
                     return true;
                 }
             }
-            error = $"Unknown enum name '{s}'.";
+            if (displayNames != null)
+            {
+                for (int i = 0; i < displayNames.Length; i++)
+                {
+                    if (string.Equals(displayNames[i], s, StringComparison.OrdinalIgnoreCase))
+                    {
+                        prop.enumValueIndex = i;
+                        return true;
+                    }
+                }
+            }
+
+            // Build helpful error with available values
+            string available = string.Join(", ", names);
+            error = $"Unknown enum value '{s}'. Available: {available}";
             return false;
         }
 

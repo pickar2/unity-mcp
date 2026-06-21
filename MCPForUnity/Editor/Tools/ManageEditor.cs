@@ -21,6 +21,14 @@ namespace MCPForUnity.Editor.Tools
         // Constant for total layer count
         private const int TotalLayerCount = 32;
 
+        // Internal seam for the deferred recompile refresh: tests substitute a no-op
+        // so the callback queued on EditorApplication.delayCall does not fire a real
+        // AssetDatabase.Refresh mid-suite (which triggers a domain reload and kills
+        // the Test Runner). Captured by-value per invocation so test TearDown can
+        // restore the default without racing the queued callback.
+        internal static Action RecompileRefreshAction =
+            () => AssetDatabase.Refresh(ImportAssetOptions.ForceUpdate | ImportAssetOptions.ForceSynchronousImport);
+
         /// <summary>
         /// Main handler for editor management actions.
         /// </summary>
@@ -46,6 +54,9 @@ namespace MCPForUnity.Editor.Tools
             // Parameters for specific actions
             string tagName = p.Get("tagName");
             string layerName = p.Get("layerName");
+            bool recompile = p.GetBool("recompile", false);
+            bool paused = p.GetBool("paused", false);
+
             // Route action
             switch (action)
             {
@@ -53,10 +64,39 @@ namespace MCPForUnity.Editor.Tools
                 case "play":
                     try
                     {
+                        // Recompile triggers a domain reload which would kill play mode.
+                        if (recompile && EditorApplication.isPlaying)
+                        {
+                            return new ErrorResponse("Cannot recompile while in play mode. Exit play mode first.");
+                        }
+
+                        // Domain-reload resilience: queue the refresh to run AFTER this
+                        // response is sent back over the WebSocket. Domain reload kills
+                        // the connection, so the Python side waits for reconnection,
+                        // verifies compilation, and enters play mode.
+                        if (recompile)
+                        {
+                            var refresh = RecompileRefreshAction;
+                            EditorApplication.delayCall += () => refresh();
+                            return new SuccessResponse("Recompile initiated.", new
+                            {
+                                pending = "recompile",
+                                enterPlayMode = !EditorApplication.isPlaying,
+                                paused = paused,
+                            });
+                        }
+
                         if (!EditorApplication.isPlaying)
                         {
                             EditorApplication.isPlaying = true;
-                            return new SuccessResponse("Entered play mode.");
+                            if (paused)
+                            {
+                                EditorApplication.isPaused = true;
+                            }
+                            return new SuccessResponse(paused ? "Entered play mode (paused)." : "Entered play mode.", new
+                            {
+                                paused = paused,
+                            });
                         }
                         return new SuccessResponse("Already in play mode.");
                     }

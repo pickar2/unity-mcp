@@ -292,7 +292,12 @@ namespace MCPForUnity.Editor.Services.Transport.Transports
             if (connectedEndpoint == null)
             {
                 string errorMsg = "Connection failed. Check that the server URL is correct, the server is running, and your API key (if required) is valid.";
-                McpLog.Error($"[WebSocket] {errorMsg} (Detail: {lastConnectError?.Message ?? "Unknown error"})");
+                // Downgrade to Debug during domain reload — reconnection failures are expected
+                // while the editor is still initializing after script recompilation.
+                if (EditorStateCache.IsRecentDomainReload())
+                    McpLog.Debug($"[WebSocket] {errorMsg} (reconnecting after domain reload)");
+                else
+                    McpLog.Error($"[WebSocket] {errorMsg} (Detail: {lastConnectError?.Message ?? "Unknown error"})");
                 _state = TransportState.Disconnected(TransportDisplayName, errorMsg);
                 return false;
             }
@@ -395,13 +400,19 @@ namespace MCPForUnity.Editor.Services.Transport.Transports
                 }
                 catch (WebSocketException wse)
                 {
-                    McpLog.Warn($"[WebSocket] Receive loop error: {wse.Message}");
+                    if (EditorStateCache.IsRecentDomainReload())
+                        McpLog.Debug($"[WebSocket] Receive loop error (after domain reload): {wse.Message}");
+                    else
+                        McpLog.Warn($"[WebSocket] Receive loop error: {wse.Message}");
                     await HandleSocketClosureAsync(wse.Message).ConfigureAwait(false);
                     break;
                 }
                 catch (Exception ex)
                 {
-                    McpLog.Warn($"[WebSocket] Unexpected receive error: {ex.Message}");
+                    if (EditorStateCache.IsRecentDomainReload())
+                        McpLog.Debug($"[WebSocket] Unexpected receive error (after domain reload): {ex.Message}");
+                    else
+                        McpLog.Warn($"[WebSocket] Unexpected receive error: {ex.Message}");
                     await HandleSocketClosureAsync(ex.Message).ConfigureAwait(false);
                     break;
                 }
@@ -683,7 +694,10 @@ namespace MCPForUnity.Editor.Services.Transport.Transports
                 }
                 catch (Exception ex)
                 {
-                    McpLog.Warn($"[WebSocket] Keep-alive failed: {ex.Message}");
+                    if (EditorStateCache.IsRecentDomainReload())
+                        McpLog.Debug($"[WebSocket] Keep-alive failed (after domain reload): {ex.Message}");
+                    else
+                        McpLog.Warn($"[WebSocket] Keep-alive failed: {ex.Message}");
                     await HandleSocketClosureAsync(ex.Message).ConfigureAwait(false);
                     break;
                 }
@@ -760,7 +774,10 @@ namespace MCPForUnity.Editor.Services.Transport.Transports
 
             _isConnected = false;
             _state = _state.WithError(reason ?? "Connection closed");
-            McpLog.Warn($"[WebSocket] Connection closed: {reason}");
+            if (EditorStateCache.IsRecentDomainReload())
+                McpLog.Debug($"[WebSocket] Connection closed (after domain reload): {reason}");
+            else
+                McpLog.Warn($"[WebSocket] Connection closed: {reason}");
 
             await StopConnectionLoopsAsync(awaitTasks: false).ConfigureAwait(false);
 

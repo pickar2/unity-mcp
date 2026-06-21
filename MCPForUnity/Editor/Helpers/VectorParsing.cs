@@ -403,8 +403,11 @@ namespace MCPForUnity.Editor.Helpers
         /// <list type="bullet">
         ///   <item><c>time</c> (float): <b>Default: 0</b></item>
         ///   <item><c>value</c> (float): <b>Default: 1</b> (note: differs from ManageScriptableObject which uses 0)</item>
-        ///   <item><c>inTangent</c> (float): <b>Default: 0</b></item>
-        ///   <item><c>outTangent</c> (float): <b>Default: 0</b></item>
+        ///   <item><c>inTangent</c> or <c>inSlope</c> (float): Incoming tangent. <b>Default: 0</b></item>
+        ///   <item><c>outTangent</c> or <c>outSlope</c> (float): Outgoing tangent. <b>Default: 0</b></item>
+        ///   <item><c>weightedMode</c> (int): 0=None, 1=In, 2=Out, 3=Both. <b>Default: 0</b></item>
+        ///   <item><c>inWeight</c> (float): Incoming tangent weight. <b>Default: 0</b></item>
+        ///   <item><c>outWeight</c> (float): Outgoing tangent weight. <b>Default: 0</b></item>
         /// </list>
         /// 
         /// <para><b>Note:</b> This method is used by ManageVFX. For ScriptableObject patching,
@@ -435,9 +438,16 @@ namespace MCPForUnity.Editor.Helpers
                         {
                             float time = key["time"]?.ToObject<float>() ?? 0f;
                             float value = key["value"]?.ToObject<float>() ?? 1f;
-                            float inTangent = key["inTangent"]?.ToObject<float>() ?? 0f;
-                            float outTangent = key["outTangent"]?.ToObject<float>() ?? 0f;
-                            curve.AddKey(new Keyframe(time, value, inTangent, outTangent));
+                            float inTangent = key["inTangent"]?.ToObject<float>() ?? key["inSlope"]?.ToObject<float>() ?? 0f;
+                            float outTangent = key["outTangent"]?.ToObject<float>() ?? key["outSlope"]?.ToObject<float>() ?? 0f;
+                            var kf = new Keyframe(time, value, inTangent, outTangent);
+                            if (key["weightedMode"] != null)
+                                kf.weightedMode = (WeightedMode)key["weightedMode"].ToObject<int>();
+                            if (key["inWeight"] != null)
+                                kf.inWeight = key["inWeight"].ToObject<float>();
+                            if (key["outWeight"] != null)
+                                kf.outWeight = key["outWeight"].ToObject<float>();
+                            curve.AddKey(kf);
                         }
                         return curve;
                     }
@@ -515,7 +525,7 @@ namespace MCPForUnity.Editor.Helpers
             else
             {
                 message = "AnimationCurve requires object with 'keys' or array of keyframes. " +
-                          "Expected: { \"keys\": [ { \"time\": 0, \"value\": 0, \"inSlope\": 0, \"outSlope\": 0 }, ... ] }";
+                          "Expected: { \"keys\": [ { \"time\": 0, \"value\": 0, \"inTangent\": 0, \"outTangent\": 0 }, ... ] }";
                 return false;
             }
             
@@ -548,7 +558,7 @@ namespace MCPForUnity.Editor.Helpers
             }
             
             message = $"Value format valid (AnimationCurve with {keysArray.Count} keyframes). " +
-                      "Note: Missing keyframe fields default to 0 (time, value, inSlope, outSlope, inWeight, outWeight).";
+                      "Note: Missing keyframe fields default to 0 (time, value, inTangent, outTangent, inWeight, outWeight).";
             return true;
         }
         

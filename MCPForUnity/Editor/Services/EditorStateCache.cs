@@ -501,6 +501,16 @@ namespace MCPForUnity.Editor.Services
             return JObject.FromObject(snapshot);
         }
 
+        /// <summary>
+        /// Returns true if a domain reload completed within the specified window.
+        /// Used to suppress noisy connection-failure logs during expected reconnection.
+        /// </summary>
+        internal static bool IsRecentDomainReload(int withinMs = 60000)
+        {
+            return _domainReloadAfterUnixMs.HasValue &&
+                   (DateTimeOffset.UtcNow.ToUnixTimeMilliseconds() - _domainReloadAfterUnixMs.Value) < withinMs;
+        }
+
         public static JObject GetSnapshot()
         {
             lock (LockObj)

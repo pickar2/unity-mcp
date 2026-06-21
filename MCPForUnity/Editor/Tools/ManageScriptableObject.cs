@@ -1047,15 +1047,19 @@ namespace MCPForUnity.Editor.Tools
         {
             message = null;
             var names = prop.enumNames;
+            var displayNames = prop.enumDisplayNames;
             if (names == null || names.Length == 0) { message = "Enum has no names."; return false; }
 
             if (valueToken.Type == JTokenType.Integer)
             {
-                int idx = valueToken.Value<int>();
-                if (idx < 0 || idx >= names.Length) { message = $"Enum index out of range: {idx}"; return false; }
-                prop.enumValueIndex = idx; message = "Set enum."; return true;
+                // Treat integer as raw enum value, not index into enumNames.
+                // This matches what GameObjectSerializer returns and what agents expect.
+                prop.intValue = valueToken.Value<int>();
+                message = "Set enum.";
+                return true;
             }
 
+            // String: try C# enum member names, then display names (may have spaces)
             string s = valueToken.ToString();
             for (int i = 0; i < names.Length; i++)
             {
@@ -1064,7 +1068,18 @@ namespace MCPForUnity.Editor.Tools
                     prop.enumValueIndex = i; message = "Set enum."; return true;
                 }
             }
-            message = $"Unknown enum name '{s}'.";
+            if (displayNames != null)
+            {
+                for (int i = 0; i < displayNames.Length; i++)
+                {
+                    if (string.Equals(displayNames[i], s, StringComparison.OrdinalIgnoreCase))
+                    {
+                        prop.enumValueIndex = i; message = "Set enum."; return true;
+                    }
+                }
+            }
+            string available = string.Join(", ", names);
+            message = $"Unknown enum value '{s}'. Available: {available}";
             return false;
         }
 
@@ -1082,8 +1097,8 @@ namespace MCPForUnity.Editor.Tools
         /// <list type="bullet">
         ///   <item><c>time</c> (float): Keyframe time position. <b>Default: 0</b></item>
         ///   <item><c>value</c> (float): Keyframe value. <b>Default: 0</b></item>
-        ///   <item><c>inSlope</c> or <c>inTangent</c> (float): Incoming tangent slope. <b>Default: 0</b></item>
-        ///   <item><c>outSlope</c> or <c>outTangent</c> (float): Outgoing tangent slope. <b>Default: 0</b></item>
+        ///   <item><c>inTangent</c> or <c>inSlope</c> (float): Incoming tangent slope. <b>Default: 0</b></item>
+        ///   <item><c>outTangent</c> or <c>outSlope</c> (float): Outgoing tangent slope. <b>Default: 0</b></item>
         ///   <item><c>weightedMode</c> (int): Weighted mode enum (0=None, 1=In, 2=Out, 3=Both). <b>Default: 0 (None)</b></item>
         ///   <item><c>inWeight</c> (float): Incoming tangent weight. <b>Default: 0</b></item>
         ///   <item><c>outWeight</c> (float): Outgoing tangent weight. <b>Default: 0</b></item>
@@ -1127,7 +1142,7 @@ namespace MCPForUnity.Editor.Tools
             else
             {
                 message = "AnimationCurve requires object with 'keys' or array of keyframes. " +
-                          "Expected: { \"keys\": [ { \"time\": 0, \"value\": 0, \"inSlope\": 0, \"outSlope\": 0 }, ... ] }";
+                          "Expected: { \"keys\": [ { \"time\": 0, \"value\": 0, \"inTangent\": 0, \"outTangent\": 0 }, ... ] }";
                 return false;
             }
 
@@ -1144,10 +1159,10 @@ namespace MCPForUnity.Editor.Tools
 
                     float time = keyObj["time"]?.Value<float>() ?? 0f;
                     float value = keyObj["value"]?.Value<float>() ?? 0f;
-                    float inSlope = keyObj["inSlope"]?.Value<float>() ?? keyObj["inTangent"]?.Value<float>() ?? 0f;
-                    float outSlope = keyObj["outSlope"]?.Value<float>() ?? keyObj["outTangent"]?.Value<float>() ?? 0f;
+                    float inTangent = keyObj["inTangent"]?.Value<float>() ?? keyObj["inSlope"]?.Value<float>() ?? 0f;
+                    float outTangent = keyObj["outTangent"]?.Value<float>() ?? keyObj["outSlope"]?.Value<float>() ?? 0f;
 
-                    var keyframe = new Keyframe(time, value, inSlope, outSlope);
+                    var keyframe = new Keyframe(time, value, inTangent, outTangent);
 
                     // Optional: weighted tangent mode (Unity 2018.1+)
                     if (keyObj["weightedMode"] != null)

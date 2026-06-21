@@ -209,3 +209,267 @@ class TestManagePrefabsStageActions:
         assert result["success"] is True
         assert mock_unity["params"]["action"] == "close_prefab_stage"
         assert mock_unity["tool_name"] == "manage_prefabs"
+
+
+# ── components / properties / component shorthand ────────────────────
+
+
+class TestManagePrefabsComponentsAndProperties:
+    """Tests for the components/properties/component parameters (Phase 3d re-apply)."""
+
+    def test_components_parameter_exists(self):
+        sig = inspect.signature(manage_prefabs)
+        assert "components" in sig.parameters
+
+    def test_properties_parameter_exists(self):
+        sig = inspect.signature(manage_prefabs)
+        assert "properties" in sig.parameters
+
+    def test_component_parameter_exists(self):
+        sig = inspect.signature(manage_prefabs)
+        assert "component" in sig.parameters
+
+    def test_components_bool_true_forwarded(self, mock_unity):
+        """components=True should be forwarded as a bool."""
+        result = asyncio.run(
+            manage_prefabs(
+                SimpleNamespace(),
+                action="get_info",
+                prefab_path="Assets/Prefabs/Test.prefab",
+                components=True,
+            )
+        )
+        assert result["success"] is True
+        assert mock_unity["params"]["components"] is True
+
+    def test_components_list_forwarded(self, mock_unity):
+        """components=['Rigidbody', 'Light'] should be forwarded as a list."""
+        result = asyncio.run(
+            manage_prefabs(
+                SimpleNamespace(),
+                action="get_info",
+                prefab_path="Assets/Prefabs/Test.prefab",
+                components=["Rigidbody", "Light"],
+            )
+        )
+        assert result["success"] is True
+        assert mock_unity["params"]["components"] == ["Rigidbody", "Light"]
+
+    def test_components_string_true_forwarded_as_bool(self, mock_unity):
+        """components='true' (string) should be forwarded as bool True."""
+        result = asyncio.run(
+            manage_prefabs(
+                SimpleNamespace(),
+                action="get_info",
+                prefab_path="Assets/Prefabs/Test.prefab",
+                components="true",
+            )
+        )
+        assert result["success"] is True
+        assert mock_unity["params"]["components"] is True
+
+    def test_components_json_string_parsed(self, mock_unity):
+        """components='["Rigidbody"]' (JSON string) should be parsed to a list."""
+        result = asyncio.run(
+            manage_prefabs(
+                SimpleNamespace(),
+                action="get_info",
+                prefab_path="Assets/Prefabs/Test.prefab",
+                components='["Rigidbody"]',
+            )
+        )
+        assert result["success"] is True
+        assert mock_unity["params"]["components"] == ["Rigidbody"]
+
+    def test_components_none_not_forwarded(self, mock_unity):
+        """components=None should not add a components key to params."""
+        asyncio.run(
+            manage_prefabs(
+                SimpleNamespace(),
+                action="get_info",
+                prefab_path="Assets/Prefabs/Test.prefab",
+            )
+        )
+        assert "components" not in mock_unity["params"]
+
+    def test_properties_list_forwarded_for_hierarchy(self, mock_unity):
+        """properties=['sizeDelta', 'anchoredPosition'] should be forwarded as a list."""
+        result = asyncio.run(
+            manage_prefabs(
+                SimpleNamespace(),
+                action="get_hierarchy",
+                prefab_path="Assets/Prefabs/Test.prefab",
+                components=["RectTransform"],
+                properties=["sizeDelta", "anchoredPosition"],
+            )
+        )
+        assert result["success"] is True
+        assert mock_unity["params"]["properties"] == ["sizeDelta", "anchoredPosition"]
+        assert mock_unity["params"]["components"] == ["RectTransform"]
+
+    def test_properties_dict_forwarded_for_modify(self, mock_unity):
+        """properties={'mass': 5.0} dict should be forwarded for modify_contents."""
+        result = asyncio.run(
+            manage_prefabs(
+                SimpleNamespace(),
+                action="modify_contents",
+                prefab_path="Assets/Prefabs/Test.prefab",
+                component="Rigidbody",
+                properties={"mass": 5.0},
+            )
+        )
+        assert result["success"] is True
+        assert mock_unity["params"]["properties"] == {"mass": 5.0}
+        assert mock_unity["params"]["component"] == "Rigidbody"
+
+    def test_properties_none_not_forwarded(self, mock_unity):
+        """properties=None should not add a properties key to params."""
+        asyncio.run(
+            manage_prefabs(
+                SimpleNamespace(),
+                action="get_hierarchy",
+                prefab_path="Assets/Prefabs/Test.prefab",
+            )
+        )
+        assert "properties" not in mock_unity["params"]
+
+    def test_properties_json_string_parsed(self, mock_unity):
+        """properties='["sizeDelta"]' (JSON string) should be parsed to a list."""
+        result = asyncio.run(
+            manage_prefabs(
+                SimpleNamespace(),
+                action="get_hierarchy",
+                prefab_path="Assets/Prefabs/Test.prefab",
+                components=["RectTransform"],
+                properties='["sizeDelta"]',
+            )
+        )
+        assert result["success"] is True
+        assert mock_unity["params"]["properties"] == ["sizeDelta"]
+
+
+# ── include_internal / pagination ───────────────────────────────────
+
+
+class TestManagePrefabsIncludeInternalAndPaging:
+    """Tests for include_internal + pagination parameters (Phase 3d re-apply)."""
+
+    def test_include_internal_parameter_exists(self):
+        sig = inspect.signature(manage_prefabs)
+        assert "include_internal" in sig.parameters
+
+    def test_page_size_parameter_exists(self):
+        sig = inspect.signature(manage_prefabs)
+        assert "page_size" in sig.parameters
+
+    def test_cursor_parameter_exists(self):
+        sig = inspect.signature(manage_prefabs)
+        assert "cursor" in sig.parameters
+
+    def test_max_depth_parameter_exists(self):
+        sig = inspect.signature(manage_prefabs)
+        assert "max_depth" in sig.parameters
+
+    def test_include_internal_true_forwarded(self, mock_unity):
+        """include_internal=True should be forwarded as includeInternal=True."""
+        result = asyncio.run(
+            manage_prefabs(
+                SimpleNamespace(),
+                action="get_hierarchy",
+                prefab_path="Assets/Prefabs/Test.prefab",
+                include_internal=True,
+            )
+        )
+        assert result["success"] is True
+        assert mock_unity["params"]["includeInternal"] is True
+
+    def test_include_internal_false_forwarded(self, mock_unity):
+        """include_internal=False should be forwarded as includeInternal=False."""
+        result = asyncio.run(
+            manage_prefabs(
+                SimpleNamespace(),
+                action="get_info",
+                prefab_path="Assets/Prefabs/Test.prefab",
+                include_internal=False,
+            )
+        )
+        assert result["success"] is True
+        assert mock_unity["params"]["includeInternal"] is False
+
+    def test_include_internal_none_not_forwarded(self, mock_unity):
+        """include_internal=None should not add the key to params."""
+        asyncio.run(
+            manage_prefabs(
+                SimpleNamespace(),
+                action="get_hierarchy",
+                prefab_path="Assets/Prefabs/Test.prefab",
+            )
+        )
+        assert "includeInternal" not in mock_unity["params"]
+
+    def test_include_internal_not_forwarded_for_modify(self, mock_unity):
+        """include_internal should NOT be forwarded for modify_contents (read-only axis)."""
+        asyncio.run(
+            manage_prefabs(
+                SimpleNamespace(),
+                action="modify_contents",
+                prefab_path="Assets/Prefabs/Test.prefab",
+                include_internal=True,
+            )
+        )
+        assert "includeInternal" not in mock_unity["params"]
+
+    def test_page_size_forwarded_for_hierarchy(self, mock_unity):
+        """page_size should be forwarded as an int for get_hierarchy."""
+        result = asyncio.run(
+            manage_prefabs(
+                SimpleNamespace(),
+                action="get_hierarchy",
+                prefab_path="Assets/Prefabs/Test.prefab",
+                page_size=50,
+            )
+        )
+        assert result["success"] is True
+        assert mock_unity["params"]["page_size"] == 50
+
+    def test_cursor_forwarded_for_hierarchy(self, mock_unity):
+        """cursor should be forwarded as an int for get_hierarchy."""
+        result = asyncio.run(
+            manage_prefabs(
+                SimpleNamespace(),
+                action="get_hierarchy",
+                prefab_path="Assets/Prefabs/Test.prefab",
+                cursor=200,
+            )
+        )
+        assert result["success"] is True
+        assert mock_unity["params"]["cursor"] == 200
+
+    def test_max_depth_forwarded_for_hierarchy(self, mock_unity):
+        """max_depth should be forwarded as an int for get_hierarchy."""
+        result = asyncio.run(
+            manage_prefabs(
+                SimpleNamespace(),
+                action="get_hierarchy",
+                prefab_path="Assets/Prefabs/Test.prefab",
+                max_depth=10,
+            )
+        )
+        assert result["success"] is True
+        assert mock_unity["params"]["max_depth"] == 10
+
+    def test_pagination_not_forwarded_for_modify(self, mock_unity):
+        """page_size/cursor/max_depth should NOT be forwarded for modify_contents."""
+        asyncio.run(
+            manage_prefabs(
+                SimpleNamespace(),
+                action="modify_contents",
+                prefab_path="Assets/Prefabs/Test.prefab",
+                page_size=50,
+                cursor=10,
+                max_depth=5,
+            )
+        )
+        assert "page_size" not in mock_unity["params"]
+        assert "cursor" not in mock_unity["params"]
+        assert "max_depth" not in mock_unity["params"]

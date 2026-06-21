@@ -63,11 +63,13 @@ def invalidate_cached_max_commands() -> None:
     name="batch_execute",
     description=(
         "Executes multiple MCP commands in a single batch for dramatically better performance. "
-        "STRONGLY RECOMMENDED when creating/modifying multiple objects, adding components to multiple targets, "
-        "or performing any repetitive operations. Reduces latency and token costs by 10-100x compared to "
-        "sequential tool calls. The max commands per batch is configurable in the Unity MCP Tools window "
-        f"(default {DEFAULT_MAX_COMMANDS_PER_BATCH}, hard max {ABSOLUTE_MAX_COMMANDS_PER_BATCH}). "
-        "Example: creating 5 cubes → use 1 batch_execute with 5 create commands instead of 5 separate calls."
+        "Supports ANY registered tool: scene_object, manage_scriptable_object, manage_prefabs, "
+        "manage_material, manage_asset, manage_animation, execute_menu_item, etc. "
+        "STRONGLY RECOMMENDED when performing repetitive operations — e.g. modifying 5 ScriptableObject "
+        "assets, creating 10 GameObjects, or setting properties on multiple prefabs. "
+        "Reduces latency by 10-100x compared to sequential tool calls. "
+        f"Max commands per batch: configurable (default {DEFAULT_MAX_COMMANDS_PER_BATCH}, hard max {ABSOLUTE_MAX_COMMANDS_PER_BATCH}). "
+        'Each command is {"tool": "tool_name", "params": {...}}. Commands run sequentially.'
     ),
     annotations=ToolAnnotations(
         title="Batch Execute",

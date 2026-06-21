@@ -1,8 +1,10 @@
 using System;
 using System.Linq;
+using System.Text.RegularExpressions;
 using Newtonsoft.Json.Linq;
 using NUnit.Framework;
 using UnityEngine;
+using UnityEngine.TestTools;
 using MCPForUnity.Editor.Tools;
 using MCPForUnity.Editor.Services;
 using static MCPForUnityTests.Editor.TestUtilities;
@@ -198,6 +200,7 @@ namespace MCPForUnityTests.Editor.Tools
         {
             Debug.Log($"Info-{Guid.NewGuid()}");
             Debug.LogWarning($"Warn-{Guid.NewGuid()}");
+            LogAssert.Expect(LogType.Error, new Regex("Error-"));
             Debug.LogError($"Error-{Guid.NewGuid()}");
 
             var result = ToJObject(ReadConsole.HandleCommand(new JObject
