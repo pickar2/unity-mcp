@@ -9,6 +9,7 @@ Complete reference for all MCP tools. Each tool includes parameters, types, and 
 - [Infrastructure Tools](#infrastructure-tools)
 - [Scene Tools](#scene-tools)
 - [GameObject Tools](#gameobject-tools)
+- [Scene Object Tool](#scene-object-tool)
 - [Script Tools](#script-tools)
 - [Asset Tools](#asset-tools)
 - [Material & Shader Tools](#material--shader-tools)
@@ -340,6 +341,80 @@ manage_components(
 # - "Assets/Prefabs/My.prefab" → String shorthand for asset paths
 # - "ObjectName"               → String shorthand for scene name lookup
 # - 12345                      → Integer shorthand for instanceID
+```
+
+---
+
+## Scene Object Tool
+
+### scene_object
+
+Unified tool for all GameObject interactions — list, get, set, create, delete, duplicate, move.
+
+```python
+# List objects with filtering
+scene_object(action="list", tag="Enemy", depth=0, page_size=50)
+scene_object(action="list", component="Rigidbody", layer="Water")
+scene_object(action="list", parent="Canvas", target_regex=".*Button")
+
+# Get object details
+scene_object(action="get", target="Player")                    # by name
+scene_object(action="get", target="Canvas/Panel/Button")       # by path
+scene_object(action="get", target=12345, components=True)      # by instance ID, with component data
+
+# Create
+scene_object(
+    action="create",
+    name="MyCube",
+    primitive="Cube",            # "Cube"|"Sphere"|"Capsule"|"Cylinder"|"Plane"|"Quad"
+    position=[0, 1, 0],         # local coordinates
+    rotation=[0, 45, 0],
+    scale=[1, 1, 1],
+    components=["Rigidbody", "BoxCollider"],
+    tag="Player",               # auto-creates missing tags
+    parent="Environment"
+)
+
+# Set properties (single object)
+scene_object(
+    action="set",
+    target="Player",             # name, path, or instance ID
+    position=[10, 0, 0],
+    active=True,
+    tag="Player",
+    layer="Player",
+    add_components=["AudioSource"],
+    remove_components=["OldComponent"],
+    component_properties={
+        "Rigidbody": {"mass": 10.0, "useGravity": True}
+    }
+)
+
+# Set properties (batch)
+scene_object(action="set", target_regex=".*Enemy", active=False)
+scene_object(action="set", tag="Temp", active=False)
+
+# Delete
+scene_object(action="delete", target="OldObject")
+scene_object(action="delete", target_regex=".*Temp.*")         # batch delete
+
+# Duplicate
+scene_object(
+    action="duplicate",
+    target="Player",
+    name="Player2",
+    offset=[5, 0, 0]            # position offset from original
+)
+
+# Move relative
+scene_object(
+    action="move_relative",
+    target="Player",
+    reference="Enemy",
+    direction="left",            # "left"|"right"|"up"|"down"|"forward"|"back"
+    distance=5.0,
+    world_space=True
+)
 ```
 
 ---
