@@ -54,6 +54,7 @@ class EditorStateCompilation(BaseModel):
     last_compile_finished_unix_ms: int | None = None
     last_domain_reload_before_unix_ms: int | None = None
     last_domain_reload_after_unix_ms: int | None = None
+    script_compilation_failed: bool | None = None
 
 
 class EditorStateRefresh(BaseModel):

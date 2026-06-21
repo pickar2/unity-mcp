@@ -114,11 +114,25 @@ async def _handle_deferred_recompile(
             "message": f"Timed out waiting for recompilation to complete ({elapsed:.1f}s).",
         }
 
-    # Check compilation result via editor state
-    compilation_failed = await _check_compilation_failed(ctx)
+    # Check compilation result via editor state. Transient transport/schema errors
+    # must not be silently treated as "compilation succeeded" — that leads to a
+    # confusing play-mode rejection downstream. Surface them in the response and
+    # fall back to a console-error scan so a real failure is never masked.
+    errors: list[dict] = []
+    compilation_check_error: str | None = None
+    try:
+        compilation_failed = await _check_compilation_failed(ctx)
+    except Exception as exc:
+        logger.warning("Could not check compilation state: %s", exc)
+        compilation_check_error = str(exc)
+        errors = await _get_console_errors(unity_instance)
+        compilation_failed = bool(errors)
 
     if compilation_failed:
-        errors = await _get_console_errors(unity_instance)
+        # Fetch fresh errors when we arrived here via the field-based path
+        # (errors list is still empty); the except path already populated it.
+        if not errors:
+            errors = await _get_console_errors(unity_instance)
         return {
             "success": False,
             "message": "Compilation failed. Check errors below.",
@@ -126,6 +140,7 @@ async def _handle_deferred_recompile(
                 "recompiled": True,
                 "compilation_failed": True,
                 "errors": errors,
+                **({"compilation_check_error": compilation_check_error} if compilation_check_error else {}),
             },
         }
 
@@ -161,26 +176,26 @@ async def _handle_deferred_recompile(
 
 
 async def _check_compilation_failed(ctx: Context) -> bool:
-    """Check editor state for script compilation failure."""
-    try:
-        import services.resources.editor_state as editor_state_mod
+    """Check editor state for script compilation failure.
 
-        state_resp = await editor_state_mod.get_editor_state(ctx)
-        state = (
-            state_resp.model_dump() if hasattr(state_resp, "model_dump") else state_resp
-        )
-        if not isinstance(state, dict):
-            return False
-        data = state.get("data")
-        if not isinstance(data, dict):
-            return False
-        compilation = data.get("compilation")
-        if not isinstance(compilation, dict):
-            return False
-        return compilation.get("script_compilation_failed", False) is True
-    except Exception as exc:
-        logger.debug("Could not check compilation state: %s", exc)
+    Raises on transport/schema errors so the caller can surface them — silently
+    returning False would mask real failures as "compilation succeeded".
+    """
+    import services.resources.editor_state as editor_state_mod
+
+    state_resp = await editor_state_mod.get_editor_state(ctx)
+    state = (
+        state_resp.model_dump() if hasattr(state_resp, "model_dump") else state_resp
+    )
+    if not isinstance(state, dict):
         return False
+    data = state.get("data")
+    if not isinstance(data, dict):
+        return False
+    compilation = data.get("compilation")
+    if not isinstance(compilation, dict):
+        return False
+    return compilation.get("script_compilation_failed", False) is True
 
 
 async def _get_console_errors(unity_instance: str | None) -> list[dict]:
